@@ -15,6 +15,7 @@ class Capture():
     _browsers = ['chromium', 'firefox', 'webkit']
     _viewport = {'width': 1920, 'height': 1080}
     _general_timeout = 90 * 1000   # in miliseconds, set to 90s by default
+    _cookies: List[SetCookieParam] = []
 
     def __init__(self, browser: str='chromium'):
 
@@ -94,12 +95,10 @@ class Capture():
             return []
         return self._cookies
 
-    @cookies.setter
-    def cookies(self, cookies: List[Dict]):
+    def prepare_cookies(self, cookies: List[Dict[str, Any]]):
         '''Cookies to send along to the initial request.
-        :param cookies: The headers, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
+        :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
-        self._cookies = []
         for cookie in cookies:
             c: SetCookieParam = {
                 'name': cookie['name'],
