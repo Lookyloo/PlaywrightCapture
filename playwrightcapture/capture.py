@@ -4,9 +4,10 @@ import json
 import os
 
 from tempfile import NamedTemporaryFile
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List, Union, Any
 
-from playwright.async_api import async_playwright, ProxySettings
+from playwright.async_api import async_playwright, ProxySettings, Frame
+from playwright._impl._api_structures import SetCookieParam
 
 
 class Capture():
@@ -57,10 +58,9 @@ class Capture():
             # http_credentials=self.http_credentials
         )
         self.context.set_default_navigation_timeout(self._general_timeout)
+        await self.context.add_cookies(self.cookies)
         if hasattr(self, 'http_headers'):
             await self.context.set_extra_http_headers(self.http_headers)
-        if hasattr(self, 'session_cookies'):
-            await self.context.add_cookies(self.session_cookies)
 
     @property
     def user_agent(self) -> str:
@@ -89,7 +89,7 @@ class Capture():
         self._http_headers = headers
 
     @property
-    def cookies(self) -> List[Dict]:
+    def cookies(self) -> List[SetCookieParam]:
         if not hasattr(self, '_cookies'):
             return []
         return self._cookies
@@ -99,7 +99,20 @@ class Capture():
         '''Cookies to send along to the initial request.
         :param cookies: The headers, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
-        self._cookies = cookies
+        self._cookies = []
+        for cookie in cookies:
+            c: SetCookieParam = {
+                'name': cookie['name'],
+                'value': cookie['value'],
+                'url': cookie.get('url'),
+                'domain': cookie.get('domain'),
+                'path': cookie.get('path'),
+                'expires': cookie.get('expires'),
+                'httpOnly': cookie.get('httpOnly'),
+                'secure': cookie.get('secure'),
+                'sameSite': cookie.get('sameSite')
+            }
+            self._cookies.append(c)
 
     @property
     def viewport(self):
@@ -117,9 +130,17 @@ class Capture():
     def set_http_credentials(self, username: str, password: str):
         self._http_credentials = {'username': username, 'password': password}
 
+    def make_frame_tree(self, frame: Frame) -> Dict[str, List[Dict]]:
+        to_return: Dict[str, List[Dict]] = {frame._impl_obj._guid: []}
+        for child in frame.child_frames:
+            to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
+        return to_return
+
     async def capture_page(self, url: str, referer: Optional[str]=None):
         page = await self.context.new_page()
         await page.goto(url, wait_until='networkidle', referer=referer if referer else '')
+
+        await page.bring_to_front()
 
         # page instrumentation
         await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
@@ -133,12 +154,15 @@ class Capture():
 
         await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
 
-        to_return = {}
+        to_return: Dict[str, Any] = {}
         to_return['html'] = await page.content()
         to_return['png'] = await page.screenshot(full_page=True)
         to_return['last_redirected_url'] = page.url
         to_return['cookies'] = await self.context.cookies()
         await self.context.close()
+        frames_tree = self.make_frame_tree(page.main_frame)
+        print(page.frames)
+        print(frames_tree)
         with open(self._temp_harfile.name) as _har:
             to_return['har'] = json.load(_har)
 
@@ -149,4 +173,4 @@ class Capture():
             os.unlink(self._temp_harfile)
 
         await self.browser.close()
-        await self.playwright.stop()
+        self.playwright.stop()
