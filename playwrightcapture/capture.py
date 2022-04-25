@@ -113,14 +113,22 @@ class Capture():
             c: SetCookieParam = {
                 'name': cookie['name'],
                 'value': cookie['value'],
-                'url': cookie.get('url'),
-                'domain': cookie.get('domain'),
-                'path': cookie.get('path'),
-                'expires': cookie.get('expires'),
-                'httpOnly': cookie.get('httpOnly'),
-                'secure': cookie.get('secure'),
-                'sameSite': cookie.get('sameSite')
             }
+            # self.context.add_cookies doesn't accept None, we cannot just use get
+            if 'url' in cookie:
+                c['url'] = cookie['url']
+            if 'domain' in cookie:
+                c['domain'] = cookie['domain']
+            if 'path' in cookie:
+                c['path'] = cookie['path']
+            if 'expires' in cookie:
+                c['expires'] = cookie['expires']
+            if 'httpOnly' in cookie:
+                c['httpOnly'] = cookie['httpOnly']
+            if 'secure' in cookie:
+                c['secure'] = cookie['secure']
+            if 'sameSite' in cookie:
+                c['sameSite'] = cookie['sameSite']
             self._cookies.append(c)
 
     @property
