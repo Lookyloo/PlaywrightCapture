@@ -6,7 +6,7 @@ import os
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
-from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error
+from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, PlaywrightTimeoutError
 from playwright._impl._api_structures import SetCookieParam
 
 
@@ -182,6 +182,8 @@ class Capture():
             # frames_tree = self.make_frame_tree(page.main_frame)
             with open(self._temp_harfile.name) as _har:
                 to_return['har'] = json.load(_har)
+        except PlaywrightTimeoutError as e:
+            to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
 
