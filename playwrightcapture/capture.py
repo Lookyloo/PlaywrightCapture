@@ -6,7 +6,7 @@ import os
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
-from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie
+from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error
 from playwright._impl._api_structures import SetCookieParam
 
 
@@ -155,32 +155,35 @@ class Capture():
         return to_return
 
     async def capture_page(self, url: str, referer: Optional[str]=None) -> CaptureResponse:
-        page = await self.context.new_page()
-        await page.goto(url, wait_until='networkidle', referer=referer if referer else '')
-
-        await page.bring_to_front()
-
-        # page instrumentation
-        await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
-        # move mouse
-        await page.mouse.move(x=500, y=400)
-        await page.wait_for_load_state('networkidle')
-
-        # scroll
-        await page.mouse.wheel(delta_y=2000, delta_x=0)
-        await page.wait_for_load_state('networkidle')
-
-        await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
-
         to_return: CaptureResponse = {}
-        to_return['html'] = await page.content()
-        to_return['png'] = await page.screenshot(full_page=True)
-        to_return['last_redirected_url'] = page.url
-        to_return['cookies'] = await self.context.cookies()
-        await self.context.close()
-        # frames_tree = self.make_frame_tree(page.main_frame)
-        with open(self._temp_harfile.name) as _har:
-            to_return['har'] = json.load(_har)
+        try:
+            page = await self.context.new_page()
+            await page.goto(url, wait_until='networkidle', referer=referer if referer else '')
+
+            await page.bring_to_front()
+
+            # page instrumentation
+            await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
+            # move mouse
+            await page.mouse.move(x=500, y=400)
+            await page.wait_for_load_state('networkidle')
+
+            # scroll
+            await page.mouse.wheel(delta_y=2000, delta_x=0)
+            await page.wait_for_load_state('networkidle')
+
+            await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
+
+            to_return['html'] = await page.content()
+            to_return['png'] = await page.screenshot(full_page=True)
+            to_return['last_redirected_url'] = page.url
+            to_return['cookies'] = await self.context.cookies()
+            await self.context.close()
+            # frames_tree = self.make_frame_tree(page.main_frame)
+            with open(self._temp_harfile.name) as _har:
+                to_return['har'] = json.load(_har)
+        except Error as e:
+            to_return['error'] = e.message
 
         return to_return
 
