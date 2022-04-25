@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "0.1.0"
+version = "0.1.1"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -26,6 +26,7 @@ playwright = "^1.21.0"
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.1"
 mypy = "^0.942"
+types-setuptools = "^57.4.14"
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "setuptools"]
