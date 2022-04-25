@@ -6,7 +6,8 @@ import os
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
-from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, PlaywrightTimeoutError
+from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright._impl._api_structures import SetCookieParam
 
 
