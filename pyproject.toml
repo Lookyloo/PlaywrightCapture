@@ -3,6 +3,21 @@ name = "PlaywrightCapture"
 version = "0.1.0"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
+license = "BSD-3-Clause"
+repository = "https://github.com/Lookyloo/PlaywrightCapture"
+readme = "README.md"
+
+classifiers=[
+    'License :: OSI Approved :: BSD License',
+    'Environment :: Console',
+    'Intended Audience :: Science/Research',
+    'Intended Audience :: Telecommunications Industry',
+    'Programming Language :: Python :: 3',
+    'Topic :: Security',
+    'Topic :: Internet',
+]
+
+include = ['README.md']
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -17,8 +32,12 @@ requires = ["poetry-core>=1.0.0", "setuptools"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.mypy]
-python_version = 3.8
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 check_untyped_defs = true
+disallow_any_generics = true
+python_version = 3.8
 ignore_errors = false
 ignore_missing_imports = false
 strict_optional = true
