@@ -190,9 +190,9 @@ class Capture():
 
         return to_return
 
-    async def __exit__(self) -> None:
+    async def cleanup(self) -> None:
         if hasattr(self, '_temp_harfile'):
-            os.unlink(self._temp_harfile)
+            os.unlink(self._temp_harfile.name)
 
         await self.browser.close()
-        self.playwright.stop()
+        await self.playwright.stop()
