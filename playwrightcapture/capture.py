@@ -28,10 +28,13 @@ class Capture():
     _general_timeout = 45 * 1000   # in miliseconds, set to 45s by default
     _cookies: List[SetCookieParam] = []
 
-    def __init__(self):
-        self._temp_harfile = NamedTemporaryFile(delete=False)
+    def __init__(self, browser: str='chromium', proxy: Optional[Union[str, Dict[str, str]]]=None):
+        if browser not in self._browsers:
+            raise Exception(f'Incorrect browser name, must be in {", ".join(self._browsers)}')
+        self.browser_name = browser
+        self.proxy = proxy
 
-    async def prepare_capture(self, browser: str='chromium', proxy: Optional[Union[str, Dict[str, str]]]=None) -> None:
+    async def __aenter__(self) -> 'Capture':
         '''Launch the browser, with or without a proxy.
         :param proxy: The proxy, as a dictionary with the following format:
             ```
@@ -40,30 +43,33 @@ class Capture():
                 'password': 'pwd'}
             ```
         '''
-        self.playwright = await async_playwright().start()
-        if browser not in self._browsers:
-            raise Exception(f'Incorrect browser name, must be in {", ".join(self._browsers)}')
+        self._temp_harfile = NamedTemporaryFile(delete=False)
 
-        if browser == 'chromium':
+        self.playwright = await async_playwright().start()
+
+        if self.browser_name == 'chromium':
             browser_type = self.playwright.chromium
-        elif browser == 'firefox':
+        elif self.browser_name == 'firefox':
             browser_type = self.playwright.firefox
-        elif browser == 'webkit':
+        elif self.browser_name == 'webkit':
             browser_type = self.playwright.webkit
-        if proxy:
+        if self.proxy:
             p: ProxySettings
-            if isinstance(proxy, str):
-                p = {'server': proxy}
+            if isinstance(self.proxy, str):
+                p = {'server': self.proxy}
             else:
-                p = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
-                     'username': proxy.get('username', ''), 'password': proxy.get('password', '')}
+                p = {'server': self.proxy['server'], 'bypass': self.proxy.get('bypass', ''),
+                     'username': self.proxy.get('username', ''),
+                     'password': self.proxy.get('password', '')}
             self.browser = await browser_type.launch(proxy=p)
         else:
             self.browser = await browser_type.launch()
+        return self
 
     async def prepare_context(self) -> None:
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
+            ignore_https_errors=True,
             viewport=self.viewport,
             user_agent=self.user_agent,
             # http_credentials=self.http_credentials
@@ -196,7 +202,7 @@ class Capture():
 
         return to_return
 
-    async def cleanup(self) -> None:
+    async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore
         if hasattr(self, '_temp_harfile'):
             os.unlink(self._temp_harfile.name)
 
