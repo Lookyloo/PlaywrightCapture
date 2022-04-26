@@ -6,7 +6,7 @@ import os
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
-from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error
+from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright._impl._api_structures import SetCookieParam
 
@@ -155,23 +155,29 @@ class Capture():
             to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
         return to_return
 
+    async def _safe_wait(self, page: Page) -> None:
+        try:
+            await page.wait_for_load_state('networkidle')
+        except PlaywrightTimeoutError:
+            # Network never idle, keep going
+            pass
+
     async def capture_page(self, url: str, referer: Optional[str]=None) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
             page = await self.context.new_page()
-            await page.goto(url, wait_until='networkidle', referer=referer if referer else '')
-
+            await page.goto(url, wait_until='load', referer=referer if referer else '')
             await page.bring_to_front()
 
             # page instrumentation
-            await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
+            await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
             # move mouse
             await page.mouse.move(x=500, y=400)
-            await page.wait_for_load_state('networkidle')
+            await self._safe_wait(page)
 
             # scroll
             await page.mouse.wheel(delta_y=2000, delta_x=0)
-            await page.wait_for_load_state('networkidle')
+            await self._safe_wait(page)
 
             await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
 
@@ -179,7 +185,7 @@ class Capture():
             to_return['png'] = await page.screenshot(full_page=True)
             to_return['last_redirected_url'] = page.url
             to_return['cookies'] = await self.context.cookies()
-            await self.context.close()
+            await self.context.close()  # context needs to be closed to generate the HAR
             # frames_tree = self.make_frame_tree(page.main_frame)
             with open(self._temp_harfile.name) as _har:
                 to_return['har'] = json.load(_har)
