@@ -25,11 +25,10 @@ class Capture():
 
     _browsers = ['chromium', 'firefox', 'webkit']
     _viewport: ViewportSize = {'width': 1920, 'height': 1080}
-    _general_timeout = 90 * 1000   # in miliseconds, set to 90s by default
+    _general_timeout = 45 * 1000   # in miliseconds, set to 45s by default
     _cookies: List[SetCookieParam] = []
 
-    def __init__(self, browser: str='chromium'):
-
+    def __init__(self):
         self._temp_harfile = NamedTemporaryFile(delete=False)
 
     async def prepare_capture(self, browser: str='chromium', proxy: Optional[Union[str, Dict[str, str]]]=None) -> None:
@@ -157,7 +156,8 @@ class Capture():
 
     async def _safe_wait(self, page: Page) -> None:
         try:
-            await page.wait_for_load_state('networkidle')
+            # If we don't have networkidle relatively quick, it's probably because we're playing a video.
+            await page.wait_for_load_state('networkidle', timeout=10)
         except PlaywrightTimeoutError:
             # Network never idle, keep going
             pass
