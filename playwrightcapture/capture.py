@@ -195,4 +195,4 @@ class Capture():
             os.unlink(self._temp_harfile.name)
 
         await self.browser.close()
-        await self.playwright.stop()
+        await self.playwright.stop()  # type: ignore
