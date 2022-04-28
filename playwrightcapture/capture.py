@@ -6,6 +6,8 @@ import os
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
+import dateparser
+
 from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright._impl._api_structures import SetCookieParam
@@ -128,12 +130,14 @@ class Capture():
             if 'path' in cookie:
                 c['path'] = cookie['path']
             if 'expires' in cookie:
-                c['expires'] = cookie['expires']
+                _expire = dateparser.parse(cookie['expires'])
+                if _expire:
+                    c['expires'] = _expire.timestamp()
             if 'httpOnly' in cookie:
-                c['httpOnly'] = cookie['httpOnly']
+                c['httpOnly'] = bool(cookie['httpOnly'])
             if 'secure' in cookie:
-                c['secure'] = cookie['secure']
-            if 'sameSite' in cookie:
+                c['secure'] = bool(cookie['secure'])
+            if 'sameSite' in cookie and cookie['sameSite'] in ["Lax", "None", "Strict"]:
                 c['sameSite'] = cookie['sameSite']
             self._cookies.append(c)
 
@@ -191,14 +195,15 @@ class Capture():
             to_return['png'] = await page.screenshot(full_page=True)
             to_return['last_redirected_url'] = page.url
             to_return['cookies'] = await self.context.cookies()
-            await self.context.close()  # context needs to be closed to generate the HAR
-            # frames_tree = self.make_frame_tree(page.main_frame)
-            with open(self._temp_harfile.name) as _har:
-                to_return['har'] = json.load(_har)
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
+        finally:
+            await self.context.close()  # context needs to be closed to generate the HAR
+            # frames_tree = self.make_frame_tree(page.main_frame)
+            with open(self._temp_harfile.name) as _har:
+                to_return['har'] = json.load(_har)
 
         return to_return
 
