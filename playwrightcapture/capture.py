@@ -130,9 +130,15 @@ class Capture():
             if 'path' in cookie:
                 c['path'] = cookie['path']
             if 'expires' in cookie:
-                _expire = dateparser.parse(cookie['expires'])
-                if _expire:
-                    c['expires'] = _expire.timestamp()
+                if isinstance(cookie['expires'], str):
+                    try:
+                        _expire = dateparser.parse(cookie['expires'])
+                        if _expire:
+                            c['expires'] = _expire.timestamp()
+                    except Exception:
+                        pass
+                elif isinstance(cookie['expires'], (float, int)):
+                    c['expires'] = cookie['expires']
             if 'httpOnly' in cookie:
                 c['httpOnly'] = bool(cookie['httpOnly'])
             if 'secure' in cookie:
