@@ -196,16 +196,16 @@ class Capture():
             await self._safe_wait(page)
 
             await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
-
             to_return['html'] = await page.content()
-            to_return['png'] = await page.screenshot(full_page=True)
-            to_return['last_redirected_url'] = page.url
-            to_return['cookies'] = await self.context.cookies()
+
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
         finally:
+            to_return['png'] = await page.screenshot(full_page=True)
+            to_return['last_redirected_url'] = page.url
+            to_return['cookies'] = await self.context.cookies()
             await self.context.close()  # context needs to be closed to generate the HAR
             # frames_tree = self.make_frame_tree(page.main_frame)
             with open(self._temp_harfile.name) as _har:
