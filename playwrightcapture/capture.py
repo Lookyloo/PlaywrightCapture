@@ -2,6 +2,8 @@
 
 import json
 import os
+import random
+import logging
 
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
@@ -11,6 +13,14 @@ import dateparser
 from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright._impl._api_structures import SetCookieParam
+
+try:
+    import pydub  # type: ignore
+    import requests
+    from speech_recognition import Recognizer, AudioFile  # type: ignore
+    CAN_SOLVE_CAPTCHA = True
+except ImportError:
+    CAN_SOLVE_CAPTCHA = False
 
 
 class CaptureResponse(TypedDict, total=False):
@@ -30,7 +40,9 @@ class Capture():
     _general_timeout = 45 * 1000   # in miliseconds, set to 45s by default
     _cookies: List[SetCookieParam] = []
 
-    def __init__(self, browser: str='chromium', proxy: Optional[Union[str, Dict[str, str]]]=None):
+    def __init__(self, browser: str='chromium', proxy: Optional[Union[str, Dict[str, str]]]=None, loglevel: str='WARNING'):
+        self.logger = logging.getLogger('playwrightcapture')
+        self.logger.setLevel(loglevel)
         if browser not in self._browsers:
             raise Exception(f'Incorrect browser name, must be in {", ".join(self._browsers)}')
         self.browser_name = browser
@@ -63,14 +75,18 @@ class Capture():
                 p = {'server': self.proxy['server'], 'bypass': self.proxy.get('bypass', ''),
                      'username': self.proxy.get('username', ''),
                      'password': self.proxy.get('password', '')}
-            self.browser = await browser_type.launch(proxy=p)
+            self.browser = await browser_type.launch(
+                proxy=p,
+            )
         else:
-            self.browser = await browser_type.launch()
+            self.browser = await browser_type.launch(
+            )
         return self
 
     async def prepare_context(self) -> None:
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
+            # record_video_dir='./video/',
             ignore_https_errors=True,
             viewport=self.viewport,
             user_agent=self.user_agent,
@@ -178,6 +194,53 @@ class Capture():
             # Network never idle, keep going
             pass
 
+    async def recaptcha_solver(self, page: Page) -> bool:
+        framename = await page.locator("//iframe[@title='reCAPTCHA']").get_attribute("name")
+        if not framename:
+            return False
+        recaptcha_init_frame = page.frame(name=framename)
+
+        if not recaptcha_init_frame:
+            return False
+        await recaptcha_init_frame.click("//div[@class='recaptcha-checkbox-border']")
+        await page.wait_for_timeout(random.randint(1, 3) * 1000)
+        s = recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']")
+        if await s.get_attribute("aria-checked") != "false":  # solved already
+            return True
+
+        recaptcha_testframename = await page.locator("//iframe[contains(@src,'https://google.com/recaptcha/api2/bframe?')]").get_attribute("name")
+        if not recaptcha_testframename:
+            return False
+        main_frame = page.frame(name=recaptcha_testframename)
+        if not main_frame:
+            return False
+
+        # click on audio challenge button
+        await main_frame.click("id=recaptcha-reload-button", timeout=2 * 1000,
+                               delay=100, position={'x': 3, 'y': 4})
+        await page.wait_for_timeout(random.randint(1, 3) * 1000)
+        await main_frame.locator("#recaptcha-audio-button").click(timeout=2 * 1000)
+
+        # get audio file
+        await page.wait_for_timeout(random.randint(1, 3) * 1000)
+        await main_frame.click("//button[@aria-labelledby='audio-instructions rc-response-label']", timeout=5 * 1000)
+        href = await main_frame.locator("//a[@class='rc-audiochallenge-tdownload-link']").get_attribute("href")
+        if not href:
+            return False
+        r = requests.get(href, allow_redirects=True)
+        with NamedTemporaryFile() as mp3_file, NamedTemporaryFile() as wav_file:
+            mp3_file.write(r.content)
+            pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")
+            recognizer = Recognizer()
+            recaptcha_audio = AudioFile(wav_file.name)
+            with recaptcha_audio as source:
+                audio = recognizer.record(source)
+            text = recognizer.recognize_google(audio)
+        await main_frame.fill("id=audio-response", text)
+        await main_frame.click("id=recaptcha-verify-button")
+        await self._safe_wait(page)
+        return True
+
     async def capture_page(self, url: str, referer: Optional[str]=None) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
@@ -187,30 +250,51 @@ class Capture():
 
             # page instrumentation
             await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
-            # move mouse
-            await page.mouse.move(x=500, y=400)
-            await self._safe_wait(page)
 
-            # scroll
-            await page.mouse.wheel(delta_y=2000, delta_x=0)
-            await self._safe_wait(page)
+            # ==== recaptcha
+            # Same technique as: https://github.com/NikolaiT/uncaptcha3
+            if CAN_SOLVE_CAPTCHA and await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
+                self.logger.info('Found a captcha')
+                try:
+                    await self.recaptcha_solver(page)
+                except Error:
+                    self.logger.exception('Error while resolving captcha.')
+                except Exception:
+                    self.logger.exception('General error with captcha solving.')
+            # ======
 
+            # check if we have anything on the page. If we don't, the page is not working properly.
+            if await page.content():
+                # move mouse
+                await page.mouse.move(x=500, y=400)
+                await self._safe_wait(page)
+                self.logger.debug('Moved mouse')
+
+                # scroll
+                # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
+                await page.mouse.wheel(delta_y=2000, delta_x=0)
+                await self._safe_wait(page)
+                await page.keyboard.press('PageUp')
+                self.logger.debug('Scrolled')
+
+            await self._safe_wait(page)
             await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
             to_return['html'] = await page.content()
+            to_return['png'] = await page.screenshot(full_page=True)
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
+            self.logger.exception('Something went poorly.')
         finally:
-            to_return['png'] = await page.screenshot(full_page=True)
             to_return['last_redirected_url'] = page.url
             to_return['cookies'] = await self.context.cookies()
             await self.context.close()  # context needs to be closed to generate the HAR
             # frames_tree = self.make_frame_tree(page.main_frame)
             with open(self._temp_harfile.name) as _har:
                 to_return['har'] = json.load(_har)
-
+        self.logger.debug('Capture done')
         return to_return
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore
