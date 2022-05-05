@@ -2,6 +2,27 @@
 
 Simple replacement for [splash](https://github.com/scrapinghub/splash) using [playwright](https://github.com/microsoft/playwright-python).
 
+# Install
+
+```bash
+pip install playwrightcapture
+```
+
+# Usage
+
+A very basic example:
+
+```python
+from playwrightcapture import Capture
+
+async with Capture() as capture:
+    await capture.prepare_context()
+    entries = await capture.capture_page(url)
+```
+
+Entries is a dictionaries that contains (if all goes well) the HAR, the screenshot, all the cookies of the session, the URL as it is in the browser at the end of the capture, and the full HTML page as rendered.
+
+
 # reCAPTCHA bypass
 
 No blackmagic, it is just a reimplementation of a [well known technique](https://github.com/NikolaiT/uncaptcha3)
@@ -10,8 +31,8 @@ and [there](https://github.com/embium/solverecaptchas).
 
 This modules will try to bypass reCAPTCHA protected websites if you install it this way:
 
-```
-    pip install playwrightcapture[recaptcha]
+```bash
+pip install playwrightcapture[recaptcha]
 ```
 
 This will install `requests`, `pydub` and `SpeechRecognition`. In order to work, `pydub`
