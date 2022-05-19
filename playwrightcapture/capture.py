@@ -96,6 +96,11 @@ class Capture():
         await self.context.add_cookies(self.cookies)
         if hasattr(self, 'http_headers'):
             await self.context.set_extra_http_headers(self.http_headers)
+        await self.context.grant_permissions([
+            'geolocation', 'midi', 'midi-sysex', 'notifications',
+            'camera', 'microphone', 'background-sync', 'ambient-light-sensor',
+            'accelerometer', 'gyroscope', 'magnetometer', 'accessibility-events',
+            'clipboard-read', 'clipboard-write', 'payment-handler'])
 
     @property
     def user_agent(self) -> str:
@@ -253,10 +258,11 @@ class Capture():
 
             # ==== recaptcha
             # Same technique as: https://github.com/NikolaiT/uncaptcha3
-            if CAN_SOLVE_CAPTCHA and await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
-                self.logger.info('Found a captcha')
+            if CAN_SOLVE_CAPTCHA:
                 try:
-                    await self.recaptcha_solver(page)
+                    if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
+                        self.logger.info('Found a captcha')
+                        await self.recaptcha_solver(page)
                 except Error:
                     self.logger.exception('Error while resolving captcha.')
                 except Exception:
