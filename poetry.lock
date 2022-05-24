@@ -325,7 +325,7 @@ types-urllib3 = "<1.27"
 
 [[package]]
 name = "types-setuptools"
-version = "57.4.14"
+version = "57.4.15"
 description = "Typing stubs for setuptools"
 category = "dev"
 optional = false
@@ -399,7 +399,7 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "455efbe92df699db114b90f5af0f015edac5ee75c4884eac530c8c0e1116f8be"
+content-hash = "95f59a8316b6218a7a6a6d0e03f492e6c588fa552e551f3680216ee13a172c59"
 
 [metadata.files]
 atomicwrites = [
@@ -687,8 +687,8 @@ types-requests = [
     {file = "types_requests-2.27.27-py3-none-any.whl", hash = "sha256:6d8463ffe1f6edcf2e5361740a6140e7a16d427c267d83c7c1d3d1298f4e67c5"},
 ]
 types-setuptools = [
-    {file = "types-setuptools-57.4.14.tar.gz", hash = "sha256:df02fe1dd244f58cf4e67cfc3d0a97930a2d61a72dd89f21d81c71017cd83f9a"},
-    {file = "types_setuptools-57.4.14-py3-none-any.whl", hash = "sha256:828f7e7e51e157876f47c80518b23ba0c3c36aa8081efd39d5d39f393938aec9"},
+    {file = "types-setuptools-57.4.15.tar.gz", hash = "sha256:650528ce803586029d7f153f32aed2dbaa6bb2888b233334af80d7ba63ed3c87"},
+    {file = "types_setuptools-57.4.15-py3-none-any.whl", hash = "sha256:f8f19876f714a440c4badef1b91b0648604ed443e703d29d44cd36ac93b01a77"},
 ]
 types-urllib3 = [
     {file = "types-urllib3-1.26.14.tar.gz", hash = "sha256:2a2578e4b36341ccd240b00fccda9826988ff0589a44ba4a664bbd69ef348d27"},

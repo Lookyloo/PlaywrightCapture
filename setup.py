@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='playwrightcapture',
-    version='1.0-dev',
+    version='1.13-dev',
     author='Raphaël Vinot',
     author_email='raphael.vinot@circl.lu',
     maintainer='Raphaël Vinot',
