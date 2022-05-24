@@ -246,6 +246,21 @@ class Capture():
         await self._safe_wait(page)
         return True
 
+    async def _failsafe_get_content(self, page: Page) -> Optional[str]:
+        ''' The page might be changing for all kind of reason (generally a JS timout).
+        In that case, we try a few times to get the HTML.'''
+        tries = 3
+        while tries:
+            try:
+                return await page.content()
+            except Error:
+                self.logger.debug('Unable to get page content, trying again.')
+                tries -= 1
+                await page.wait_for_timeout(1000)
+                await self._safe_wait(page)
+        self.logger.warning('Unable to get page content.')
+        return None
+
     async def capture_page(self, url: str, referer: Optional[str]=None) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
@@ -270,7 +285,7 @@ class Capture():
             # ======
 
             # check if we have anything on the page. If we don't, the page is not working properly.
-            if await page.content():
+            if await self._failsafe_get_content(page):
                 # move mouse
                 await page.mouse.move(x=500, y=400)
                 await self._safe_wait(page)
@@ -285,9 +300,11 @@ class Capture():
 
             await self._safe_wait(page)
             await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
-            to_return['html'] = await page.content()
-            to_return['png'] = await page.screenshot(full_page=True)
+            await self._safe_wait(page)
 
+            if (content := await self._failsafe_get_content(page)):
+                to_return['html'] = content
+            to_return['png'] = await page.screenshot(full_page=True)
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
