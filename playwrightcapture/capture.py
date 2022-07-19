@@ -5,7 +5,6 @@ import os
 import random
 import logging
 
-from io import BytesIO
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
@@ -26,14 +25,14 @@ except ImportError:
 
 class CaptureResponse(TypedDict, total=False):
 
-    html: str
-    png: bytes
+    har: Dict[str, Any]
     last_redirected_url: str
     cookies: List[Cookie]
-    har: Dict[str, Any]
     error: Optional[str]
-    downloaded_file_name: Optional[str]
-    downloaded_file: Optional[BytesIO]
+    html: Optional[str]
+    png: Optional[bytes]
+    downloaded_filename: Optional[str]
+    downloaded_file: Optional[bytes]
 
 
 class Capture():
@@ -250,7 +249,7 @@ class Capture():
         return True
 
     async def _failsafe_get_content(self, page: Page) -> Optional[str]:
-        ''' The page might be changing for all kind of reason (generally a JS timout).
+        ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
         tries = 3
         while tries:
@@ -270,59 +269,60 @@ class Capture():
             page = await self.context.new_page()
             try:
                 await page.goto(url, wait_until='load', referer=referer if referer else '')
-            except Error as e:
+            except Error:
                 # page.goto failed, but it (might have) triggered a download event.
                 # If it is the case, let's try to save it.
                 try:
                     async with page.expect_download(timeout=5) as download_info:
-                        f = NamedTemporaryFile(delete=False)
+                        tmp_f = NamedTemporaryFile(delete=False)
                         download = await download_info.value
-                        await download.save_as(f.name)
-                        to_return["downloaded_file_name"] = download.suggested_filename
-                        with open(f.name, "rb") as f:
-                            to_return["downloaded_file"] = BytesIO(f.read())
+                        await download.save_as(tmp_f.name)
+                        to_return["downloaded_filename"] = download.suggested_filename
+                        with open(tmp_f.name, "rb") as f:
+                            to_return["downloaded_file"] = f.read()
                         os.unlink(f.name)
                 except PlaywrightTimeoutError:
                     self.logger.warning('No download has been triggered')
-            await page.bring_to_front()
+            else:
+                await page.bring_to_front()
 
-            # page instrumentation
-            await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
+                # page instrumentation
+                await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
 
-            # ==== recaptcha
-            # Same technique as: https://github.com/NikolaiT/uncaptcha3
-            if CAN_SOLVE_CAPTCHA:
-                try:
-                    if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
-                        self.logger.info('Found a captcha')
-                        await self.recaptcha_solver(page)
-                except Error:
-                    self.logger.exception('Error while resolving captcha.')
-                except Exception:
-                    self.logger.exception('General error with captcha solving.')
-            # ======
+                # ==== recaptcha
+                # Same technique as: https://github.com/NikolaiT/uncaptcha3
+                if CAN_SOLVE_CAPTCHA:
+                    try:
+                        if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
+                            self.logger.info('Found a captcha')
+                            await self.recaptcha_solver(page)
+                    except Error:
+                        self.logger.exception('Error while resolving captcha.')
+                    except Exception:
+                        self.logger.exception('General error with captcha solving.')
+                # ======
 
-            # check if we have anything on the page. If we don't, the page is not working properly.
-            if await self._failsafe_get_content(page):
-                # move mouse
-                await page.mouse.move(x=500, y=400)
+                # check if we have anything on the page. If we don't, the page is not working properly.
+                if await self._failsafe_get_content(page):
+                    # move mouse
+                    await page.mouse.move(x=500, y=400)
+                    await self._safe_wait(page)
+                    self.logger.debug('Moved mouse')
+
+                    # scroll
+                    # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
+                    await page.mouse.wheel(delta_y=2000, delta_x=0)
+                    await self._safe_wait(page)
+                    await page.keyboard.press('PageUp')
+                    self.logger.debug('Scrolled')
+
                 await self._safe_wait(page)
-                self.logger.debug('Moved mouse')
-
-                # scroll
-                # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
-                await page.mouse.wheel(delta_y=2000, delta_x=0)
+                await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
                 await self._safe_wait(page)
-                await page.keyboard.press('PageUp')
-                self.logger.debug('Scrolled')
 
-            await self._safe_wait(page)
-            await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
-            await self._safe_wait(page)
-
-            if content := await self._failsafe_get_content(page):
-                to_return['html'] = content
-            to_return['png'] = await page.screenshot(full_page=True)
+                if content := await self._failsafe_get_content(page):
+                    to_return['html'] = content
+                to_return['png'] = await page.screenshot(full_page=True)
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
