@@ -5,6 +5,7 @@ import os
 import random
 import logging
 
+from io import BytesIO
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict
 
@@ -31,6 +32,8 @@ class CaptureResponse(TypedDict, total=False):
     cookies: List[Cookie]
     har: Dict[str, Any]
     error: Optional[str]
+    downloaded_file_name: Optional[str]
+    downloaded_file: Optional[BytesIO]
 
 
 class Capture():
@@ -265,7 +268,22 @@ class Capture():
         to_return: CaptureResponse = {}
         try:
             page = await self.context.new_page()
-            await page.goto(url, wait_until='load', referer=referer if referer else '')
+            try:
+                await page.goto(url, wait_until='load', referer=referer if referer else '')
+            except Error as e:
+                # page.goto failed, but it (might have) triggered a download event.
+                # If it is the case, let's try to save it.
+                try:
+                    async with page.expect_download(timeout=5) as download_info:
+                        f = NamedTemporaryFile(delete=False)
+                        download = await download_info.value
+                        await download.save_as(f.name)
+                        to_return["downloaded_file_name"] = download.suggested_filename
+                        with open(f.name, "rb") as f:
+                            to_return["downloaded_file"] = BytesIO(f.read())
+                        os.unlink(f.name)
+                except PlaywrightTimeoutError:
+                    self.logger.warning('No download has been triggered')
             await page.bring_to_front()
 
             # page instrumentation
@@ -302,7 +320,7 @@ class Capture():
             await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
             await self._safe_wait(page)
 
-            if (content := await self._failsafe_get_content(page)):
+            if content := await self._failsafe_get_content(page):
                 to_return['html'] = content
             to_return['png'] = await page.screenshot(full_page=True)
         except PlaywrightTimeoutError as e:
