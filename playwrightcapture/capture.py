@@ -269,7 +269,7 @@ class Capture():
             page = await self.context.new_page()
             try:
                 await page.goto(url, wait_until='load', referer=referer if referer else '')
-            except Error:
+            except Error as initial_error:
                 # page.goto failed, but it (might have) triggered a download event.
                 # If it is the case, let's try to save it.
                 try:
@@ -282,7 +282,8 @@ class Capture():
                             to_return["downloaded_file"] = f.read()
                         os.unlink(f.name)
                 except PlaywrightTimeoutError:
-                    self.logger.warning('No download has been triggered')
+                    self.logger.info('No download has been triggered.')
+                    raise initial_error
             else:
                 await page.bring_to_front()
 

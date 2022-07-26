@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.13.3"
+version = "1.13.4"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -32,7 +32,7 @@ pytest = "^7.1.2"
 mypy = "^0.971"
 types-setuptools = "^63.2.1"
 types-dateparser = "^1.1.4"
-types-requests = "^2.28.3"
+types-requests = "^2.28.4"
 
 [tool.poetry.extras]
 recaptcha = ['requests', 'pydub', 'SpeechRecognition']
