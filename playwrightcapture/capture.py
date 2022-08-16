@@ -12,7 +12,10 @@ import dateparser
 
 from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
 from playwright._impl._api_structures import SetCookieParam
+
+from .exceptions import PlaywrightCaptureException
 
 try:
     import pydub  # type: ignore
@@ -37,17 +40,19 @@ class CaptureResponse(TypedDict, total=False):
 
 class Capture():
 
-    _browsers = ['chromium', 'firefox', 'webkit']
+    _user_agent: str = ''
+    _browsers: List[str] = ['chromium', 'firefox', 'webkit']
     _viewport: ViewportSize = {'width': 1920, 'height': 1080}
-    _general_timeout = 45 * 1000   # in miliseconds, set to 45s by default
+    _general_timeout: int = 45 * 1000   # in miliseconds, set to 45s by default
     _cookies: List[SetCookieParam] = []
+    _http_credentials: Dict[str, str] = {}
+    _headers: Dict[str, str] = {}
 
-    def __init__(self, browser: str='chromium', proxy: Optional[Union[str, Dict[str, str]]]=None, loglevel: str='WARNING'):
+    def __init__(self, browser: Optional[str]=None, device_name: Optional[str]=None, proxy: Optional[Union[str, Dict[str, str]]]=None, loglevel: str='WARNING'):
         self.logger = logging.getLogger('playwrightcapture')
         self.logger.setLevel(loglevel)
-        if browser not in self._browsers:
-            raise Exception(f'Incorrect browser name, must be in {", ".join(self._browsers)}')
-        self.browser_name = browser
+        self.browser_name = browser if browser else 'chromium'
+        self.device_name = device_name
         self.proxy = proxy
 
     async def __aenter__(self) -> 'Capture':
@@ -63,12 +68,15 @@ class Capture():
 
         self.playwright = await async_playwright().start()
 
-        if self.browser_name == 'chromium':
-            browser_type = self.playwright.chromium
-        elif self.browser_name == 'firefox':
-            browser_type = self.playwright.firefox
-        elif self.browser_name == 'webkit':
-            browser_type = self.playwright.webkit
+        if self.device_name:
+            if self.device_name in self.playwright.devices:
+                self.device_settings = self.playwright.devices[self.device_name]
+                self.browser_name = self.device_settings['default_browser_type']
+            else:
+                raise PlaywrightCaptureException(f'Unknown device name {self.device_name}, must be in {", ".join(self.playwright.devices.keys())}')
+        elif self.browser_name not in self._browsers:
+            raise PlaywrightCaptureException(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
+
         if self.proxy:
             p: ProxySettings
             if isinstance(self.proxy, str):
@@ -77,66 +85,23 @@ class Capture():
                 p = {'server': self.proxy['server'], 'bypass': self.proxy.get('bypass', ''),
                      'username': self.proxy.get('username', ''),
                      'password': self.proxy.get('password', '')}
-            self.browser = await browser_type.launch(
+            self.browser = await self.playwright[self.browser_name].launch(
                 proxy=p,
             )
         else:
-            self.browser = await browser_type.launch(
-            )
+            self.browser = await self.playwright[self.browser_name].launch()
         return self
 
-    async def prepare_context(self) -> None:
-        self.context = await self.browser.new_context(
-            record_har_path=self._temp_harfile.name,
-            # record_video_dir='./video/',
-            ignore_https_errors=True,
-            viewport=self.viewport,
-            user_agent=self.user_agent,
-            # http_credentials=self.http_credentials
-        )
-        self.context.set_default_navigation_timeout(self._general_timeout)
-        await self.context.add_cookies(self.cookies)
-        if hasattr(self, 'http_headers'):
-            await self.context.set_extra_http_headers(self.http_headers)
-        await self.context.grant_permissions([
-            'geolocation', 'midi', 'midi-sysex', 'notifications',
-            'camera', 'microphone', 'background-sync', 'ambient-light-sensor',
-            'accelerometer', 'gyroscope', 'magnetometer', 'accessibility-events',
-            'clipboard-read', 'clipboard-write', 'payment-handler'])
-
     @property
-    def user_agent(self) -> str:
-        if not hasattr(self, '_user_agent'):
-            return ''
-        return self._user_agent
-
-    @user_agent.setter
-    def user_agent(self, user_agent: str) -> None:
-        self._user_agent = user_agent
-
-    @property
-    def http_headers(self) -> Dict[str, str]:
-        if not hasattr(self, '_http_headers'):
-            return {}
-        return self._http_headers
-
-    @http_headers.setter
-    def http_headers(self, headers: Dict[str, str]) -> None:
-        '''HTTPheaders to send along to the initial request.
-        :param headers: The headers, in this format (no space in the header name, value must be a string):
-            ```
-                {'header_name': 'value', 'other_header_name': 'value'}
-            ```
-        '''
-        self._http_headers = headers
+    def http_credentials(self) -> Dict[str, str]:
+        return self._http_credentials
 
     @property
     def cookies(self) -> List[SetCookieParam]:
-        if not hasattr(self, '_cookies'):
-            return []
         return self._cookies
 
-    def prepare_cookies(self, cookies: List[Dict[str, Any]]) -> None:
+    @cookies.setter
+    def cookies(self, cookies: List[Dict[str, Any]]) -> None:
         '''Cookies to send along to the initial request.
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
@@ -171,17 +136,60 @@ class Capture():
             self._cookies.append(c)
 
     @property
+    def headers(self) -> Dict[str, str]:
+        return self._headers
+
+    @headers.setter
+    def headers(self, headers: Dict[str, str]) -> None:
+        self._headers = headers
+
+    @property
     def viewport(self) -> ViewportSize:
         return self._viewport
 
-    def set_viewport(self, width: int, height: int) -> None:
-        self._viewport = {'width': width, 'height': height}
+    @viewport.setter
+    def viewport(self, viewport: Dict[str, int]) -> None:
+        if 'width' in viewport and 'height' in viewport:
+            self._viewport = {'width': viewport['width'], 'height': viewport['height']}
+        else:
+            raise PlaywrightCaptureException(f'A viewport must have a height and a width - {viewport}')
 
     @property
-    def http_credentials(self) -> Dict[str, str]:
-        if not hasattr(self, '_http_credentials'):
-            return {}
-        return self._http_credentials
+    def user_agent(self) -> str:
+        return self._user_agent
+
+    @user_agent.setter
+    def user_agent(self, user_agent: str) -> None:
+        self._user_agent = user_agent
+
+    async def initialize_context(self) -> None:
+        default_context_settings = {
+            'record_har_path': self._temp_harfile.name,
+            'ignore_https_errors': True,
+            'viewport': self.viewport,
+            **(self.device_settings if self.device_name else {})
+        }
+        if self.http_credentials:
+            default_context_settings['http_credentials'] = self.http_credentials
+        if self.user_agent:
+            default_context_settings['user_agent'] = self.user_agent
+        print(default_context_settings)
+        self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
+
+        self.context.set_default_navigation_timeout(self._general_timeout)
+        if self.cookies:
+            await self.context.add_cookies(self.cookies)
+        if self.headers:
+            await self.context.set_extra_http_headers(self.headers)
+        await self.context.grant_permissions([
+            'geolocation',
+            # 'midi',
+            # 'midi-sysex',
+            # 'notifications',
+            # 'camera', 'microphone', 'background-sync', 'ambient-light-sensor',
+            # 'accelerometer', 'gyroscope', 'magnetometer', 'accessibility-events',
+            # 'clipboard-read', 'clipboard-write', 'payment-handler'
+        ])
 
     def set_http_credentials(self, username: str, password: str) -> None:
         self._http_credentials = {'username': username, 'password': password}
@@ -339,9 +347,10 @@ class Capture():
         self.logger.debug('Capture done')
         return to_return
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         if hasattr(self, '_temp_harfile'):
             os.unlink(self._temp_harfile.name)
 
         await self.browser.close()
+        # This method *must* be awaited but for some reason, MyPy complains.
         await self.playwright.stop()  # type: ignore
