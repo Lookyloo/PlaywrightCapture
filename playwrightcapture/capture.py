@@ -15,7 +15,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from playwright._impl._api_structures import SetCookieParam
 
-from .exceptions import PlaywrightCaptureException
+from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
 
 try:
     import pydub  # type: ignore
@@ -42,7 +42,8 @@ class Capture():
 
     _user_agent: str = ''
     _browsers: List[str] = ['chromium', 'firefox', 'webkit']
-    _viewport: ViewportSize = {'width': 1920, 'height': 1080}
+    _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
+    _viewport: Optional[ViewportSize] = None
     _general_timeout: int = 45 * 1000   # in miliseconds, set to 45s by default
     _cookies: List[SetCookieParam] = []
     _http_credentials: Dict[str, str] = {}
@@ -70,12 +71,11 @@ class Capture():
 
         if self.device_name:
             if self.device_name in self.playwright.devices:
-                self.device_settings = self.playwright.devices[self.device_name]
-                self.browser_name = self.device_settings['default_browser_type']
+                self.browser_name = self.playwright.devices[self.device_name]['default_browser_type']
             else:
-                raise PlaywrightCaptureException(f'Unknown device name {self.device_name}, must be in {", ".join(self.playwright.devices.keys())}')
+                raise UnknownPlaywrightDevice(f'Unknown device name {self.device_name}, must be in {", ".join(self.playwright.devices.keys())}')
         elif self.browser_name not in self._browsers:
-            raise PlaywrightCaptureException(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
+            raise UnknownPlaywrightBrowser(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
 
         if self.proxy:
             p: ProxySettings
@@ -144,7 +144,7 @@ class Capture():
         self._headers = headers
 
     @property
-    def viewport(self) -> ViewportSize:
+    def viewport(self) -> Optional[ViewportSize]:
         return self._viewport
 
     @viewport.setter
@@ -152,7 +152,7 @@ class Capture():
         if 'width' in viewport and 'height' in viewport:
             self._viewport = {'width': viewport['width'], 'height': viewport['height']}
         else:
-            raise PlaywrightCaptureException(f'A viewport must have a height and a width - {viewport}')
+            raise InvalidPlaywrightParameter(f'A viewport must have a height and a width - {viewport}')
 
     @property
     def user_agent(self) -> str:
@@ -165,15 +165,30 @@ class Capture():
     async def initialize_context(self) -> None:
         default_context_settings = {
             'record_har_path': self._temp_harfile.name,
-            'ignore_https_errors': True,
-            'viewport': self.viewport,
-            **(self.device_settings if self.device_name else {})
+            'ignore_https_errors': True
         }
+
+        if self.device_name:
+            default_context_settings.update(self.playwright.devices[self.device_name])
+
         if self.http_credentials:
             default_context_settings['http_credentials'] = self.http_credentials
+
         if self.user_agent:
+            # User defined UA, can overwrite device UA
             default_context_settings['user_agent'] = self.user_agent
-        print(default_context_settings)
+
+        if self.viewport:
+            # User defined viewport, can overwrite device viewport
+            default_context_settings['viewport'] = self.viewport
+        elif 'viewport' not in default_context_settings:
+            # No viewport given, fallback to default
+            default_context_settings['viewport'] = self._default_viewport
+
+        if self.browser_name == 'firefox' and default_context_settings.get('is_mobile'):
+            # NOTE: Not supported, see https://github.com/microsoft/playwright-python/issues/1509
+            default_context_settings.pop('is_mobile')
+
         self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
 
         self.context.set_default_navigation_timeout(self._general_timeout)
@@ -181,15 +196,36 @@ class Capture():
             await self.context.add_cookies(self.cookies)
         if self.headers:
             await self.context.set_extra_http_headers(self.headers)
-        await self.context.grant_permissions([
+
+        # NOTE: Which perms are supported by which browsers varies
+        # See https://github.com/microsoft/playwright/issues/16577
+        chromium_permissions = [
             'geolocation',
-            # 'midi',
-            # 'midi-sysex',
-            # 'notifications',
-            # 'camera', 'microphone', 'background-sync', 'ambient-light-sensor',
-            # 'accelerometer', 'gyroscope', 'magnetometer', 'accessibility-events',
-            # 'clipboard-read', 'clipboard-write', 'payment-handler'
-        ])
+            'midi',
+            'midi-sysex',
+            'notifications',
+            'camera',
+            'microphone',
+            'background-sync',
+            'ambient-light-sensor',
+            'accelerometer',
+            'gyroscope',
+            'magnetometer',
+            'accessibility-events',
+            'clipboard-read',
+            'clipboard-write',
+            'payment-handler'
+        ]
+
+        firefox_permissions = ['geolocation', 'notifications']
+        webkit_permissions = ['geolocation']
+
+        if self.browser_name == 'webkit':
+            await self.context.grant_permissions(webkit_permissions)
+        elif self.browser_name == 'firefox':
+            await self.context.grant_permissions(firefox_permissions)
+        elif self.browser_name == 'chromium':
+            await self.context.grant_permissions(chromium_permissions)
 
     def set_http_credentials(self, username: str, password: str) -> None:
         self._http_credentials = {'username': username, 'password': password}
@@ -319,9 +355,12 @@ class Capture():
                     self.logger.debug('Moved mouse')
 
                     # scroll
-                    # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
-                    await page.mouse.wheel(delta_y=2000, delta_x=0)
-                    await self._safe_wait(page)
+                    try:
+                        # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
+                        await page.mouse.wheel(delta_y=2000, delta_x=0)
+                        await self._safe_wait(page)
+                    except Error as e:
+                        self.logger.warning(f'Unable to scroll: {e}')
                     await page.keyboard.press('PageUp')
                     self.logger.debug('Scrolled')
 
