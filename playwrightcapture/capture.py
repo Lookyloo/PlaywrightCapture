@@ -324,7 +324,7 @@ class Capture():
                         to_return["downloaded_filename"] = download.suggested_filename
                         with open(tmp_f.name, "rb") as f:
                             to_return["downloaded_file"] = f.read()
-                        os.unlink(f.name)
+                        os.unlink(tmp_f.name)
                 except PlaywrightTimeoutError:
                     self.logger.info('No download has been triggered.')
                     raise initial_error
@@ -341,10 +341,10 @@ class Capture():
                         if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
                             self.logger.info('Found a captcha')
                             await self.recaptcha_solver(page)
-                    except Error:
-                        self.logger.exception('Error while resolving captcha.')
-                    except Exception:
-                        self.logger.exception('General error with captcha solving.')
+                    except Error as e:
+                        self.logger.warning(f'Error while resolving captcha: {e}')
+                    except Exception as e:
+                        self.logger.exception(f'General error with captcha solving: {e}')
                 # ======
 
                 # check if we have anything on the page. If we don't, the page is not working properly.
