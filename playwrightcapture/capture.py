@@ -370,7 +370,13 @@ class Capture():
 
                 if content := await self._failsafe_get_content(page):
                     to_return['html'] = content
-                to_return['png'] = await page.screenshot(full_page=True)
+                try:
+                    to_return['png'] = await page.screenshot(full_page=True)
+                except Error as e:
+                    self.logger.warning(f"Capturing the full page failed, trying to get the current viewport only: {e}")
+                    to_return['png'] = await page.screenshot()
+                    to_return['error'] = f"Capturing the full page failed, getting the current viewport only: {e}"
+
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
