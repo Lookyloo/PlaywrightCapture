@@ -15,10 +15,10 @@ optional = false
 python-versions = ">=3.5"
 
 [package.extras]
-dev = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "mypy (>=0.900,!=0.940)", "pytest-mypy-plugins", "zope.interface", "furo", "sphinx", "sphinx-notfound-page", "pre-commit", "cloudpickle"]
-docs = ["furo", "sphinx", "zope.interface", "sphinx-notfound-page"]
-tests = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "mypy (>=0.900,!=0.940)", "pytest-mypy-plugins", "zope.interface", "cloudpickle"]
-tests_no_zope = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "mypy (>=0.900,!=0.940)", "pytest-mypy-plugins", "cloudpickle"]
+dev = ["cloudpickle", "coverage[toml] (>=5.0.2)", "furo", "hypothesis", "mypy (>=0.900,!=0.940)", "pre-commit", "pympler", "pytest (>=4.3.0)", "pytest-mypy-plugins", "sphinx", "sphinx-notfound-page", "zope.interface"]
+docs = ["furo", "sphinx", "sphinx-notfound-page", "zope.interface"]
+tests = ["cloudpickle", "coverage[toml] (>=5.0.2)", "hypothesis", "mypy (>=0.900,!=0.940)", "pympler", "pytest (>=4.3.0)", "pytest-mypy-plugins", "zope.interface"]
+tests_no_zope = ["cloudpickle", "coverage[toml] (>=5.0.2)", "hypothesis", "mypy (>=0.900,!=0.940)", "pympler", "pytest (>=4.3.0)", "pytest-mypy-plugins"]
 
 [[package]]
 name = "backports.zoneinfo"
@@ -73,7 +73,7 @@ regex = "<2019.02.19 || >2019.02.19,<2021.8.27 || >2021.8.27,<2022.3.15"
 tzlocal = "*"
 
 [package.extras]
-calendars = ["convertdate", "hijri-converter", "convertdate"]
+calendars = ["convertdate", "convertdate", "hijri-converter"]
 fasttext = ["fasttext"]
 langdetect = ["langdetect"]
 
@@ -143,7 +143,7 @@ pyparsing = ">=2.0.2,<3.0.5 || >3.0.5"
 
 [[package]]
 name = "playwright"
-version = "1.25.1"
+version = "1.25.2"
 description = "A high-level API to automate web browsers"
 category = "main"
 optional = false
@@ -200,7 +200,7 @@ optional = false
 python-versions = ">=3.6.8"
 
 [package.extras]
-diagrams = ["railroad-diagrams", "jinja2"]
+diagrams = ["jinja2", "railroad-diagrams"]
 
 [[package]]
 name = "pytest"
@@ -370,7 +370,7 @@ tzdata = {version = "*", markers = "platform_system == \"Windows\""}
 
 [package.extras]
 devenv = ["black", "pyroma", "pytest-cov", "zest.releaser"]
-test = ["pytest-mock (>=3.3)", "pytest (>=4.3)"]
+test = ["pytest (>=4.3)", "pytest-mock (>=3.3)"]
 
 [[package]]
 name = "urllib3"
@@ -381,8 +381,8 @@ optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, <4"
 
 [package.extras]
-brotli = ["brotlicffi (>=0.8.0)", "brotli (>=1.0.9)", "brotlipy (>=0.6.0)"]
-secure = ["pyOpenSSL (>=0.14)", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "certifi", "urllib3-secure-extra", "ipaddress"]
+brotli = ["brotli (>=1.0.9)", "brotlicffi (>=0.8.0)", "brotlipy (>=0.6.0)"]
+secure = ["certifi", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "ipaddress", "pyOpenSSL (>=0.14)", "urllib3-secure-extra"]
 socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
@@ -399,7 +399,7 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "176d9408c7b166b6161ff287ae2b66e777a742506f57fb4c04fee54afeb720d5"
+content-hash = "b1b2fd33f26b4492621604dfde44b1408ab3fa81d77225aa2a2d7e001602a118"
 
 [metadata.files]
 atomicwrites = [
@@ -542,13 +542,13 @@ packaging = [
     {file = "packaging-21.3.tar.gz", hash = "sha256:dd47c42927d89ab911e606518907cc2d3a1f38bbd026385970643f9c5b8ecfeb"},
 ]
 playwright = [
-    {file = "playwright-1.25.1-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:1dbe89f4e3dae53add2c6b642cd07c44474eaba88593e29be7ae82106ede8e63"},
-    {file = "playwright-1.25.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:58641991bcf43ade2a0740ece6e9d22deff228a6358f9aa61a290b7c4ab6f6ab"},
-    {file = "playwright-1.25.1-py3-none-macosx_11_0_universal2.whl", hash = "sha256:426f2e839671b6fe803a87ce3c7b38a8b3c552565863700791238a97f5f1ad24"},
-    {file = "playwright-1.25.1-py3-none-manylinux1_x86_64.whl", hash = "sha256:25b7ca2ee2bdf668dc487563355f42fc354bf5a386eaf639ace44133af7c7ab3"},
-    {file = "playwright-1.25.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:de9cd487b28e7d03eb04ab8f8e23bfa75c18dffc897396dffa8e9f1be0982d22"},
-    {file = "playwright-1.25.1-py3-none-win32.whl", hash = "sha256:ca66ec55858fddfb0255a35c4c320795178b69424a51f95fe09530fed71e9abf"},
-    {file = "playwright-1.25.1-py3-none-win_amd64.whl", hash = "sha256:d5c64d4b6f4ab56ea0acf5446f3aa3834beea8d871c58a49eff189aa3cf85d13"},
+    {file = "playwright-1.25.2-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:fef1e08789732896c4de512c33e20199e27fd0effec08342db7cf1499b1cccb3"},
+    {file = "playwright-1.25.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:8e08ddd366db671017d6b741f324ac797c8681c3099c0b9a17185f2aac3a9224"},
+    {file = "playwright-1.25.2-py3-none-macosx_11_0_universal2.whl", hash = "sha256:24976035e50fc4c6af0c5c57c4de460c2db4f6590b63150c40fbe707c160ce6e"},
+    {file = "playwright-1.25.2-py3-none-manylinux1_x86_64.whl", hash = "sha256:4ccf36445a435e71e2436d08b112bcb28db6afab1c0605e94d4037f1309a24f9"},
+    {file = "playwright-1.25.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:69b6260ac98df49a868bbf8c44c324f821d359b9f2fbf18b656e836374988e5b"},
+    {file = "playwright-1.25.2-py3-none-win32.whl", hash = "sha256:b49680ad62a6e070ef857475256bc4f2cfb3242de96c12a2cae35b36564c78cb"},
+    {file = "playwright-1.25.2-py3-none-win_amd64.whl", hash = "sha256:68ae739f82b78717123eb9d1b28b4619f0b368b88ef73c633681e267680697cd"},
 ]
 pluggy = [
     {file = "pluggy-1.0.0-py2.py3-none-any.whl", hash = "sha256:74134bbf457f031a36d68416e1509f34bd5ccc019f0bcc952c7b909d06b37bd3"},
