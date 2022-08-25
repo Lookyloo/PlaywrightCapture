@@ -20,8 +20,9 @@ class PlaywrightDevice(TypedDict):
 
 def get_devices(in_testsuite: bool=False) -> Dict[str, Dict[str, Dict[str, PlaywrightDevice]]]:
     to_return: Dict[str, Dict[str, Dict[str, PlaywrightDevice]]] = {'desktop': defaultdict(dict), 'mobile': defaultdict(dict)}
-    with sync_playwright() as playwright:
-        devices: Dict[str, PlaywrightDevice] = playwright.devices
+    playwright = sync_playwright().start()
+    devices: Dict[str, PlaywrightDevice] = playwright.devices
+    playwright.stop()
     for device_name, settings in devices.items():
         splitted_name = device_name.split(' ')
         if splitted_name[0] == 'Desktop':
