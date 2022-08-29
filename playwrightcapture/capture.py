@@ -381,7 +381,7 @@ class Capture():
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
-            self.logger.exception('Something went poorly.')
+            self.logger.critical('Something went poorly: {e.message}')
         finally:
             to_return['last_redirected_url'] = page.url
             to_return['cookies'] = await self.context.cookies()
