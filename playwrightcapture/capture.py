@@ -373,6 +373,9 @@ class Capture():
                 try:
                     to_return['png'] = await page.screenshot(full_page=True)
                 except Error as e:
+                    self.logger.info(f"Capturing the full page failed, trying to scale it down: {e}")
+                    to_return['png'] = await page.screenshot(full_page=True, scale="css")
+                except Error as e:
                     self.logger.warning(f"Capturing the full page failed, trying to get the current viewport only: {e}")
                     to_return['png'] = await page.screenshot()
                     to_return['error'] = f"Capturing the full page failed, getting the current viewport only: {e}"
