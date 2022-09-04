@@ -6,7 +6,7 @@ import random
 import logging
 
 from tempfile import NamedTemporaryFile
-from typing import Optional, Dict, List, Union, Any, TypedDict
+from typing import Optional, Dict, List, Union, Any, TypedDict, Literal
 
 import dateparser
 
@@ -38,10 +38,13 @@ class CaptureResponse(TypedDict, total=False):
     downloaded_file: Optional[bytes]
 
 
+BROWSER = Literal['chromium', 'firefox', 'webkit']
+
+
 class Capture():
 
     _user_agent: str = ''
-    _browsers: List[str] = ['chromium', 'firefox', 'webkit']
+    _browsers: List[BROWSER] = ['chromium', 'firefox', 'webkit']
     _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
     _viewport: Optional[ViewportSize] = None
     _general_timeout: int = 45 * 1000   # in miliseconds, set to 45s by default
@@ -49,10 +52,21 @@ class Capture():
     _http_credentials: Dict[str, str] = {}
     _headers: Dict[str, str] = {}
 
-    def __init__(self, browser: Optional[str]=None, device_name: Optional[str]=None, proxy: Optional[Union[str, Dict[str, str]]]=None, loglevel: str='WARNING'):
+    def __init__(self, browser: Optional[BROWSER]=None, device_name: Optional[str]=None,
+                 proxy: Optional[Union[str, Dict[str, str]]]=None,
+                 general_timeout_in_sec: Optional[int] = None, loglevel: str='WARNING'):
+        """Captures a page with Playwright.
+
+        :param browser: The browser to use for the capture.
+        :param device_name: The pre-defined device to use for the capture (from playwright).)
+        :param proxy: The external proxy to use for the capture.
+        :param general_timeout_in_sec: The general timeout for the capture.
+        :param loglevel: Python loglevel
+        """
         self.logger = logging.getLogger('playwrightcapture')
         self.logger.setLevel(loglevel)
-        self.browser_name = browser if browser else 'chromium'
+        self.browser_name: BROWSER = browser if browser else 'chromium'
+        self.general_timeout = general_timeout_in_sec * 1000 if general_timeout_in_sec is not None else self._general_timeout
         self.device_name = device_name
         self.proxy = proxy
 
@@ -191,7 +205,7 @@ class Capture():
 
         self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
 
-        self.context.set_default_navigation_timeout(self._general_timeout)
+        self.context.set_default_navigation_timeout(self.general_timeout)
         if self.cookies:
             await self.context.add_cookies(self.cookies)
         if self.headers:
