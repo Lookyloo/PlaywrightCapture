@@ -29,8 +29,8 @@ except ImportError:
 
 class CaptureResponse(TypedDict, total=False):
 
-    har: Dict[str, Any]
     last_redirected_url: str
+    har: Optional[Dict[str, Any]]
     cookies: Optional[List[Cookie]]
     error: Optional[str]
     html: Optional[str]
@@ -323,7 +323,8 @@ class Capture():
         self.logger.warning('Unable to get page content.')
         return None
 
-    async def capture_page(self, url: str, referer: Optional[str]=None, page: Optional[Page]=None, depth: int=0) -> CaptureResponse:
+    async def capture_page(self, url: str, referer: Optional[str]=None, page: Optional[Page]=None,
+                           depth: int=0, rendered_hostname_only: bool=True) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
             if page:
@@ -404,7 +405,7 @@ class Capture():
                 if depth > 0 and to_return['html']:
                     to_return['children'] = []
                     depth -= 1
-                    for url in get_links_from_rendered_page(page.url, to_return['html']):
+                    for url in get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
                         self.logger.info(f'Capture child {url}')
                         to_return['children'].append(await self.capture_page(url, page.url, page, depth))  # type: ignore
 

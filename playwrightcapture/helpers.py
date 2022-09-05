@@ -51,7 +51,7 @@ def get_devices(in_testsuite: bool=False) -> Dict[str, Dict[str, Dict[str, Playw
     return to_return
 
 
-def get_links_from_rendered_page(rendered_url: str, rendered_html: str) -> List[str]:
+def get_links_from_rendered_page(rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> List[str]:
     def _sanitize(maybe_url: str) -> Optional[str]:
         href = strip_html5_whitespace(maybe_url)
         href = safe_url_string(href)
@@ -67,12 +67,16 @@ def get_links_from_rendered_page(rendered_url: str, rendered_html: str) -> List[
     urls: Set[str] = set()
     soup = BeautifulSoup(rendered_html, "lxml")
 
+    rendered_hostname = urlparse(rendered_url).hostname
     # The simple ones: the links.
     for a_tag in soup.find_all(["a", "area"]):
         href = a_tag.attrs.get("href")
         if not href:
             continue
         if href := _sanitize(href):
-            urls.add(href)
+            if not rendered_hostname_only:
+                urls.add(href)
+            elif rendered_hostname and urlparse(href).hostname == rendered_hostname:
+                urls.add(href)
 
     return sorted(urls)
