@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
-from typing import TypedDict, Dict
+from typing import TypedDict, Dict, Optional, Set, List
+from urllib.parse import urlparse, urljoin
 
+from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
+from w3lib.html import strip_html5_whitespace
+from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightDeviceType
 
@@ -45,3 +49,30 @@ def get_devices(in_testsuite: bool=False) -> Dict[str, Dict[str, Dict[str, Playw
                 to_return['mobile']['default'][device_name] = settings
 
     return to_return
+
+
+def get_links_from_rendered_page(rendered_url: str, rendered_html: str) -> List[str]:
+    def _sanitize(maybe_url: str) -> Optional[str]:
+        href = strip_html5_whitespace(maybe_url)
+        href = safe_url_string(href)
+
+        href = urljoin(rendered_url, href)
+
+        href = canonicalize_url(href, keep_fragments=True)
+        parsed = urlparse(href)
+        if not parsed.netloc:
+            return None
+        return href
+
+    urls: Set[str] = set()
+    soup = BeautifulSoup(rendered_html, "lxml")
+
+    # The simple ones: the links.
+    for a_tag in soup.find_all(["a", "area"]):
+        href = a_tag.attrs.get("href")
+        if not href:
+            continue
+        if href := _sanitize(href):
+            urls.add(href)
+
+    return sorted(urls)

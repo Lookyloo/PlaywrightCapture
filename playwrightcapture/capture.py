@@ -16,6 +16,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright._impl._api_structures import SetCookieParam
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
+from .helpers import get_links_from_rendered_page
 
 try:
     import pydub  # type: ignore
@@ -30,12 +31,13 @@ class CaptureResponse(TypedDict, total=False):
 
     har: Dict[str, Any]
     last_redirected_url: str
-    cookies: List[Cookie]
+    cookies: Optional[List[Cookie]]
     error: Optional[str]
     html: Optional[str]
     png: Optional[bytes]
     downloaded_filename: Optional[str]
     downloaded_file: Optional[bytes]
+    children: Optional[List[Any]]
 
 
 BROWSER = Literal['chromium', 'firefox', 'webkit']
@@ -321,10 +323,14 @@ class Capture():
         self.logger.warning('Unable to get page content.')
         return None
 
-    async def capture_page(self, url: str, referer: Optional[str]=None) -> CaptureResponse:
+    async def capture_page(self, url: str, referer: Optional[str]=None, page: Optional[Page]=None, depth: int=0) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
-            page = await self.context.new_page()
+            if page:
+                capturing_sub = True
+            else:
+                page = await self.context.new_page()
+                capturing_sub = False
             try:
                 await page.goto(url, wait_until='load', referer=referer if referer else '')
             except Error as initial_error:
@@ -394,18 +400,26 @@ class Capture():
                     to_return['png'] = await page.screenshot()
                     to_return['error'] = f"Capturing the full page failed, getting the current viewport only: {e}"
 
+                to_return['last_redirected_url'] = page.url
+                if depth > 0 and to_return['html']:
+                    to_return['children'] = []
+                    depth -= 1
+                    for url in get_links_from_rendered_page(page.url, to_return['html']):
+                        self.logger.info(f'Capture child {url}')
+                        to_return['children'].append(await self.capture_page(url, page.url, page, depth))  # type: ignore
+
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
             self.logger.critical('Something went poorly: {e.message}')
         finally:
-            to_return['last_redirected_url'] = page.url
-            to_return['cookies'] = await self.context.cookies()
-            await self.context.close()  # context needs to be closed to generate the HAR
-            # frames_tree = self.make_frame_tree(page.main_frame)
-            with open(self._temp_harfile.name) as _har:
-                to_return['har'] = json.load(_har)
+            if not capturing_sub:
+                to_return['cookies'] = await self.context.cookies()
+                await self.context.close()  # context needs to be closed to generate the HAR
+                # frames_tree = self.make_frame_tree(page.main_frame)
+                with open(self._temp_harfile.name) as _har:
+                    to_return['har'] = json.load(_har)
         self.logger.debug('Capture done')
         return to_return
 

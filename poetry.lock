@@ -32,6 +32,21 @@ python-versions = ">=3.6"
 tzdata = ["tzdata"]
 
 [[package]]
+name = "beautifulsoup4"
+version = "4.11.1"
+description = "Screen-scraping library"
+category = "main"
+optional = false
+python-versions = ">=3.6.0"
+
+[package.dependencies]
+soupsieve = ">1.2"
+
+[package.extras]
+html5lib = ["html5lib"]
+lxml = ["lxml"]
+
+[[package]]
 name = "certifi"
 version = "2022.6.15"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -289,6 +304,14 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
+name = "soupsieve"
+version = "2.3.2.post1"
+description = "A modern CSS selector implementation for Beautiful Soup."
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[[package]]
 name = "SpeechRecognition"
 version = "3.8.1"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
@@ -303,6 +326,14 @@ description = "A lil' TOML parser"
 category = "dev"
 optional = false
 python-versions = ">=3.7"
+
+[[package]]
+name = "types-beautifulsoup4"
+version = "4.11.5"
+description = "Typing stubs for beautifulsoup4"
+category = "dev"
+optional = false
+python-versions = "*"
 
 [[package]]
 name = "types-dateparser"
@@ -378,6 +409,14 @@ secure = ["certifi", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "ipaddress", "p
 socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
+name = "w3lib"
+version = "2.0.1"
+description = "Library of web-related functions"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[[package]]
 name = "websockets"
 version = "10.1"
 description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
@@ -391,7 +430,7 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "53555769bd4711c83b106e57c7b3ba8892b8b75cc72ce2a75b97de688a853a3e"
+content-hash = "5d83757b9727851c49a290316bf779d6e007dfd92312e474f6f3486429e89c7b"
 
 [metadata.files]
 atomicwrites = [
@@ -418,6 +457,10 @@ attrs = [
     {file = "backports.zoneinfo-0.2.1-cp38-cp38-win32.whl", hash = "sha256:1b13e654a55cd45672cb54ed12148cd33628f672548f373963b0bff67b217328"},
     {file = "backports.zoneinfo-0.2.1-cp38-cp38-win_amd64.whl", hash = "sha256:4a0f800587060bf8880f954dbef70de6c11bbe59c673c3d818921f042f9954a6"},
     {file = "backports.zoneinfo-0.2.1.tar.gz", hash = "sha256:fadbfe37f74051d024037f223b8e001611eac868b5c5b06144ef4d8b799862f2"},
+]
+beautifulsoup4 = [
+    {file = "beautifulsoup4-4.11.1-py3-none-any.whl", hash = "sha256:58d5c3d29f5a36ffeb94f02f0d786cd53014cf9b3b3951d42e0080d8a9498d30"},
+    {file = "beautifulsoup4-4.11.1.tar.gz", hash = "sha256:ad9aa55b65ef2808eb405f46cf74df7fcb7044d5cbc26487f96eb2ef2e436693"},
 ]
 certifi = [
     {file = "certifi-2022.6.15-py3-none-any.whl", hash = "sha256:fe86415d55e84719d75f8b69414f6438ac3547d2078ab91b67e779ef69378412"},
@@ -662,12 +705,20 @@ six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
     {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
 ]
+soupsieve = [
+    {file = "soupsieve-2.3.2.post1-py3-none-any.whl", hash = "sha256:3b2503d3c7084a42b1ebd08116e5f81aadfaea95863628c80a3b774a11b7c759"},
+    {file = "soupsieve-2.3.2.post1.tar.gz", hash = "sha256:fc53893b3da2c33de295667a0e19f078c14bf86544af307354de5fcf12a3f30d"},
+]
 SpeechRecognition = [
     {file = "SpeechRecognition-3.8.1-py2.py3-none-any.whl", hash = "sha256:4d8f73a0c05ec70331c3bacaa89ecc06dfa8d9aba0899276664cda06ab597e8e"},
 ]
 tomli = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
     {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
+]
+types-beautifulsoup4 = [
+    {file = "types-beautifulsoup4-4.11.5.tar.gz", hash = "sha256:645963117b0f03f4a44bda36cf3da50cc0e25001e4d19c044d1e323a37c69d73"},
+    {file = "types_beautifulsoup4-4.11.5-py3-none-any.whl", hash = "sha256:4b97fce9049e5367ddf45333c8c7224e57d71a3f93162c714be52bf1aa538f0a"},
 ]
 types-dateparser = [
     {file = "types-dateparser-1.1.4.tar.gz", hash = "sha256:0a4dadb9226ffef0ff52532c27eb7660ba72eea6e4f676a9a8fa90fa8b97d31a"},
@@ -696,6 +747,10 @@ tzlocal = [
 urllib3 = [
     {file = "urllib3-1.26.12-py2.py3-none-any.whl", hash = "sha256:b930dd878d5a8afb066a637fbb35144fe7901e3b209d1cd4f524bd0e9deee997"},
     {file = "urllib3-1.26.12.tar.gz", hash = "sha256:3fa96cf423e6987997fc326ae8df396db2a8b7c667747d47ddd8ecba91f4a74e"},
+]
+w3lib = [
+    {file = "w3lib-2.0.1-py3-none-any.whl", hash = "sha256:c5d966f86ae3fb546854478c769250c3ccb7581515b3221bcd2f864440000188"},
+    {file = "w3lib-2.0.1.tar.gz", hash = "sha256:13df15f8c17b163de0fd5faa892c1ad143e190dfcbdb98534bb975eb37c6c7d6"},
 ]
 websockets = [
     {file = "websockets-10.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:38db6e2163b021642d0a43200ee2dec8f4980bdbda96db54fde72b283b54cbfc"},
