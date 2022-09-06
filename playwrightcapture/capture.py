@@ -413,7 +413,7 @@ class Capture():
             to_return['error'] = f"The capture took too long - {e.message}"
         except Error as e:
             to_return['error'] = e.message
-            self.logger.critical('Something went poorly: {e.message}')
+            self.logger.critical(f'Something went poorly: {e.message}')
         finally:
             if not capturing_sub:
                 to_return['cookies'] = await self.context.cookies()
