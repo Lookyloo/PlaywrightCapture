@@ -117,10 +117,12 @@ class Capture():
         return self._cookies
 
     @cookies.setter
-    def cookies(self, cookies: List[Dict[str, Any]]) -> None:
+    def cookies(self, cookies: Optional[List[Dict[str, Any]]]) -> None:
         '''Cookies to send along to the initial request.
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
+        if not cookies:
+            return
         for cookie in cookies:
             c: SetCookieParam = {
                 'name': cookie['name'],
@@ -156,15 +158,18 @@ class Capture():
         return self._headers
 
     @headers.setter
-    def headers(self, headers: Dict[str, str]) -> None:
-        self._headers = headers
+    def headers(self, headers: Optional[Dict[str, str]]) -> None:
+        if headers:
+            self._headers = headers
 
     @property
     def viewport(self) -> Optional[ViewportSize]:
         return self._viewport
 
     @viewport.setter
-    def viewport(self, viewport: Dict[str, int]) -> None:
+    def viewport(self, viewport: Optional[Dict[str, int]]) -> None:
+        if not viewport:
+            return
         if 'width' in viewport and 'height' in viewport:
             self._viewport = {'width': viewport['width'], 'height': viewport['height']}
         else:
@@ -175,8 +180,9 @@ class Capture():
         return self._user_agent
 
     @user_agent.setter
-    def user_agent(self, user_agent: str) -> None:
-        self._user_agent = user_agent
+    def user_agent(self, user_agent: Optional[str]) -> None:
+        if user_agent is not None:
+            self._user_agent = user_agent
 
     async def initialize_context(self) -> None:
         default_context_settings = {
