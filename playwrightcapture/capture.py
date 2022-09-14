@@ -158,8 +158,18 @@ class Capture():
         return self._headers
 
     @headers.setter
-    def headers(self, headers: Optional[Dict[str, str]]) -> None:
-        if headers:
+    def headers(self, headers: Optional[Union[str, Dict[str, str]]]) -> None:
+        if not headers:
+            return
+        if isinstance(headers, str):
+            for header_line in headers.splitlines():
+                if header_line and ':' in header_line:
+                    splitted = header_line.split(':', 1)
+                    if splitted and len(splitted) == 2:
+                        header, h_value = splitted
+                        if header and h_value:
+                            self._headers[header.strip()] = h_value.strip()
+        else:
             self._headers = headers
 
     @property
