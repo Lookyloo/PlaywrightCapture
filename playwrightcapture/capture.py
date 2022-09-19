@@ -435,8 +435,11 @@ class Capture():
                 to_return['cookies'] = await self.context.cookies()
                 await self.context.close()  # context needs to be closed to generate the HAR
                 # frames_tree = self.make_frame_tree(page.main_frame)
-                with open(self._temp_harfile.name) as _har:
-                    to_return['har'] = json.load(_har)
+                try:
+                    with open(self._temp_harfile.name) as _har:
+                        to_return['har'] = json.load(_har)
+                except Exception as e:
+                    to_return['error'] = f'Unable to generate HAR file: {e}'
         self.logger.debug('Capture done')
         return to_return
 
