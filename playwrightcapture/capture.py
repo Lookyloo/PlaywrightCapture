@@ -72,6 +72,8 @@ class Capture():
         self.device_name = device_name
         self.proxy = proxy
 
+        self.should_retry = False
+
     async def __aenter__(self) -> 'Capture':
         '''Launch the browser, with or without a proxy.
         :param proxy: The proxy, as a dictionary with the following format:
