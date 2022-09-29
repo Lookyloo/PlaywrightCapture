@@ -429,8 +429,10 @@ class Capture():
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
+            self.retry = True
         except Error as e:
             to_return['error'] = e.message
+            # TODO: check e.name and figure out if it is worth retrying or not.
             self.logger.critical(f'Something went poorly: {e.message}')
         finally:
             if not capturing_sub:
