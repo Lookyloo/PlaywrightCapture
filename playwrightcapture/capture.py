@@ -70,13 +70,14 @@ class Capture():
         self.browser_name: BROWSER = browser if browser else 'chromium'
         self.general_timeout = general_timeout_in_sec * 1000 if general_timeout_in_sec is not None else self._general_timeout
         self.device_name = device_name
-        self.proxy: ProxySettings
-        if isinstance(proxy, str):
-            self.proxy = {'server': proxy}
-        else:
-            self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
-                          'username': proxy.get('username', ''),
-                          'password': proxy.get('password', '')}
+        self.proxy: Optional[ProxySettings] = None
+        if proxy:
+            if isinstance(proxy, str):
+                self.proxy = {'server': proxy}
+            else:
+                self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
+                              'username': proxy.get('username', ''),
+                              'password': proxy.get('password', '')}
 
         self.should_retry = False
 
@@ -415,7 +416,9 @@ class Capture():
                 if depth > 0 and to_return['html']:
                     to_return['children'] = []
                     depth -= 1
-                    for url in get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
+                    child_urls = get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only)
+                    self.logger.info(f'Capturing children, {len(child_urls)} URLs')
+                    for url in child_urls:
                         self.logger.info(f'Capture child {url}')
                         to_return['children'].append(await self.capture_page(url, page.url, page, depth))  # type: ignore
 
