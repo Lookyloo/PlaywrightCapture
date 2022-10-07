@@ -70,19 +70,18 @@ class Capture():
         self.browser_name: BROWSER = browser if browser else 'chromium'
         self.general_timeout = general_timeout_in_sec * 1000 if general_timeout_in_sec is not None else self._general_timeout
         self.device_name = device_name
-        self.proxy = proxy
+        self.proxy: ProxySettings
+        if isinstance(proxy, str):
+            self.proxy = {'server': proxy}
+        else:
+            self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
+                          'username': proxy.get('username', ''),
+                          'password': proxy.get('password', '')}
 
         self.should_retry = False
 
     async def __aenter__(self) -> 'Capture':
-        '''Launch the browser, with or without a proxy.
-        :param proxy: The proxy, as a dictionary with the following format:
-            ```
-               {'server': 'proxy.server',
-                'username': 'user',
-                'password': 'pwd'}
-            ```
-        '''
+        '''Launch the browser'''
         self._temp_harfile = NamedTemporaryFile(delete=False)
 
         self.playwright = await async_playwright().start()
@@ -96,15 +95,8 @@ class Capture():
             raise UnknownPlaywrightBrowser(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
 
         if self.proxy:
-            p: ProxySettings
-            if isinstance(self.proxy, str):
-                p = {'server': self.proxy}
-            else:
-                p = {'server': self.proxy['server'], 'bypass': self.proxy.get('bypass', ''),
-                     'username': self.proxy.get('username', ''),
-                     'password': self.proxy.get('password', '')}
             self.browser = await self.playwright[self.browser_name].launch(
-                proxy=p,
+                proxy=self.proxy,
             )
         else:
             self.browser = await self.playwright[self.browser_name].launch()
