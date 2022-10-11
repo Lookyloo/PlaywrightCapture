@@ -334,6 +334,23 @@ class Capture():
         self.logger.warning('Unable to get page content.')
         return None
 
+    async def _failsafe_get_screenshot(self, page: Page) -> bytes:
+        try:
+            return await page.screenshot(full_page=True)
+        except Error as e:
+            self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
+
+        try:
+            return await page.screenshot(full_page=True, scale="css")
+        except Error as e:
+            self.logger.warning(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
+
+        try:
+            return await page.screenshot()
+        except Error as e:
+            self.logger.warning(f"Unable to get any screenshot: {e}")
+            raise e
+
     async def capture_page(self, url: str, referer: Optional[str]=None, page: Optional[Page]=None,
                            depth: int=0, rendered_hostname_only: bool=True) -> CaptureResponse:
         to_return: CaptureResponse = {}
@@ -402,19 +419,12 @@ class Capture():
 
                 if content := await self._failsafe_get_content(page):
                     to_return['html'] = content
+
                 to_return['last_redirected_url'] = page.url
 
-                try:
-                    to_return['png'] = await page.screenshot(full_page=True)
-                except Error as e:
-                    self.logger.info(f"Capturing the full page failed, trying to scale it down: {e}")
-                    to_return['png'] = await page.screenshot(full_page=True, scale="css")
-                except Error as e:
-                    self.logger.warning(f"Capturing the full page failed, trying to get the current viewport only: {e}")
-                    to_return['png'] = await page.screenshot()
-                    to_return['error'] = f"Capturing the full page failed, getting the current viewport only: {e}"
+                to_return['png'] = await self._failsafe_get_screenshot(page)
 
-                if depth > 0 and to_return['html']:
+                if depth > 0 and to_return.get('html'):
                     to_return['children'] = []
                     depth -= 1
                     child_urls = get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only)
@@ -422,6 +432,7 @@ class Capture():
                     for url in child_urls:
                         self.logger.info(f'Capture child {url}')
                         to_return['children'].append(await self.capture_page(url, page.url, page, depth))  # type: ignore
+                        await page.go_back()
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
