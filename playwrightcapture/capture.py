@@ -402,6 +402,8 @@ class Capture():
 
                 if content := await self._failsafe_get_content(page):
                     to_return['html'] = content
+                to_return['last_redirected_url'] = page.url
+
                 try:
                     to_return['png'] = await page.screenshot(full_page=True)
                 except Error as e:
@@ -412,7 +414,6 @@ class Capture():
                     to_return['png'] = await page.screenshot()
                     to_return['error'] = f"Capturing the full page failed, getting the current viewport only: {e}"
 
-                to_return['last_redirected_url'] = page.url
                 if depth > 0 and to_return['html']:
                     to_return['children'] = []
                     depth -= 1
