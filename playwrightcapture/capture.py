@@ -424,7 +424,7 @@ class Capture():
 
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
-                if depth > 0 and to_return.get('html'):
+                if depth > 0 and to_return.get('html') and to_return['html']:
                     to_return['children'] = []
                     depth -= 1
                     child_urls = get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only)
