@@ -432,7 +432,10 @@ class Capture():
                     for url in child_urls:
                         self.logger.info(f'Capture child {url}')
                         to_return['children'].append(await self.capture_page(url, page.url, page, depth))  # type: ignore
-                        await page.go_back()
+                        try:
+                            await page.go_back()
+                        except PlaywrightTimeoutError as e:
+                            self.logger.warning(f'Go back timed out, it is probably not a big deal: {e}')
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
