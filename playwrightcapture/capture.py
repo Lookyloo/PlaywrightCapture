@@ -377,6 +377,16 @@ class Capture():
                 except PlaywrightTimeoutError:
                     self.logger.info('No download has been triggered.')
                     raise initial_error
+                except Error as e:
+                    try:
+                        error_msg = download.failure()
+                        if not error_msg:
+                            raise e
+                        to_return['error'] = f"Error while downloading: {error_msg}"
+                        self.logger.info(to_return['error'])
+                        self.retry = True
+                    except Exception:
+                        raise e
             else:
                 await page.bring_to_front()
 
@@ -409,7 +419,7 @@ class Capture():
                         await page.mouse.wheel(delta_y=2000, delta_x=0)
                         await self._safe_wait(page)
                     except Error as e:
-                        self.logger.warning(f'Unable to scroll: {e}')
+                        self.logger.info(f'Unable to scroll: {e}')
                     await page.keyboard.press('PageUp')
                     self.logger.debug('Scrolled')
 
