@@ -49,14 +49,14 @@ class Capture():
     _browsers: List[BROWSER] = ['chromium', 'firefox', 'webkit']
     _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
     _viewport: Optional[ViewportSize] = None
-    _general_timeout: int = 45 * 1000   # in miliseconds, set to 45s by default
+    _general_timeout: int = 60 * 1000   # in miliseconds, set to 60s by default
     _cookies: List[SetCookieParam] = []
     _http_credentials: Dict[str, str] = {}
     _headers: Dict[str, str] = {}
 
     def __init__(self, browser: Optional[BROWSER]=None, device_name: Optional[str]=None,
                  proxy: Optional[Union[str, Dict[str, str]]]=None,
-                 general_timeout_in_sec: Optional[int] = None, loglevel: str='WARNING'):
+                 general_timeout_in_sec: Optional[int] = None, loglevel: str='INFO'):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -79,7 +79,8 @@ class Capture():
                               'username': proxy.get('username', ''),
                               'password': proxy.get('password', '')}
 
-        self.should_retry = False
+        self.should_retry: bool = False
+        self.__network_not_idle: int = 1
 
     async def __aenter__(self) -> 'Capture':
         '''Launch the browser'''
@@ -267,10 +268,10 @@ class Capture():
     async def _safe_wait(self, page: Page) -> None:
         try:
             # If we don't have networkidle relatively quick, it's probably because we're playing a video.
-            await page.wait_for_load_state('networkidle', timeout=10)
+            await page.wait_for_load_state('networkidle', timeout=10000 / self.__network_not_idle)
         except PlaywrightTimeoutError:
             # Network never idle, keep going
-            pass
+            self.__network_not_idle += 1
 
     async def recaptcha_solver(self, page: Page) -> bool:
         framename = await page.locator("//iframe[@title='reCAPTCHA']").get_attribute("name")
@@ -281,7 +282,7 @@ class Capture():
         if not recaptcha_init_frame:
             return False
         await recaptcha_init_frame.click("//div[@class='recaptcha-checkbox-border']")
-        await page.wait_for_timeout(random.randint(1, 3) * 1000)
+        await page.wait_for_timeout(random.randint(3, 6) * 1000)
         s = recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']")
         if await s.get_attribute("aria-checked") != "false":  # solved already
             return True
@@ -294,14 +295,14 @@ class Capture():
             return False
 
         # click on audio challenge button
-        await main_frame.click("id=recaptcha-reload-button", timeout=2 * 1000,
+        await main_frame.click("id=recaptcha-reload-button", timeout=2000,
                                delay=100, position={'x': 3, 'y': 4})
         await page.wait_for_timeout(random.randint(1, 3) * 1000)
-        await main_frame.locator("#recaptcha-audio-button").click(timeout=2 * 1000)
+        await main_frame.locator("#recaptcha-audio-button").click(timeout=2000)
 
         # get audio file
         await page.wait_for_timeout(random.randint(1, 3) * 1000)
-        await main_frame.click("//button[@aria-labelledby='audio-instructions rc-response-label']", timeout=5 * 1000)
+        await main_frame.click("//button[@aria-labelledby='audio-instructions rc-response-label']", timeout=5000)
         href = await main_frame.locator("//a[@class='rc-audiochallenge-tdownload-link']").get_attribute("href")
         if not href:
             return False
@@ -361,12 +362,13 @@ class Capture():
                 page = await self.context.new_page()
                 capturing_sub = False
             try:
-                await page.goto(url, wait_until='load', referer=referer if referer else '')
+                # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
+                await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
             except Error as initial_error:
                 # page.goto failed, but it (might have) triggered a download event.
                 # If it is the case, let's try to save it.
                 try:
-                    async with page.expect_download(timeout=5) as download_info:
+                    async with page.expect_download(timeout=5000) as download_info:
                         tmp_f = NamedTemporaryFile(delete=False)
                         download = await download_info.value
                         await download.save_as(tmp_f.name)
@@ -375,7 +377,7 @@ class Capture():
                             to_return["downloaded_file"] = f.read()
                         os.unlink(tmp_f.name)
                 except PlaywrightTimeoutError:
-                    self.logger.info('No download has been triggered.')
+                    self.logger.debug('No download has been triggered.')
                     raise initial_error
                 except Error as e:
                     try:
@@ -397,7 +399,7 @@ class Capture():
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
                 if CAN_SOLVE_CAPTCHA:
                     try:
-                        if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5 * 1000):
+                        if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5000):
                             self.logger.info('Found a captcha')
                             await self.recaptcha_solver(page)
                     except Error as e:
@@ -419,7 +421,7 @@ class Capture():
                         await page.mouse.wheel(delta_y=2000, delta_x=0)
                         await self._safe_wait(page)
                     except Error as e:
-                        self.logger.info(f'Unable to scroll: {e}')
+                        self.logger.debug(f'Unable to scroll: {e}')
                     await page.keyboard.press('PageUp')
                     self.logger.debug('Scrolled')
 
