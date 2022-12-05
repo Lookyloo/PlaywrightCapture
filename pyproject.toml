@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.16.5"
+version = "1.16.6"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -26,14 +26,12 @@ dateparser = "^1.1.4"
 beautifulsoup4 = "^4.11.1"
 w3lib = "^2.1.0"
 lxml = "^4.9.1"
+requests = {version = "^2.28.1", optional = true}
+pydub = {version = "^0.25.1", optional = true}
+SpeechRecognition = {version = "^3.9.0", optional = true}
 
-[tool.poetry.group.recaptcha]
-optional = true
-
-[tool.poetry.group.recaptcha.dependencies]
-requests = "^2.28.1"
-pydub = "^0.25.1"
-SpeechRecognition = "^3.9.0"
+[tool.poetry.extras]
+recaptcha = ["requests", "pydub", "SpeechRecognition"]
 
 [tool.poetry.group.dev]
 optional = true
