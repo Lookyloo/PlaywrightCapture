@@ -325,11 +325,14 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "speechrecognition"
-version = "3.8.1"
+version = "3.9.0"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 category = "main"
 optional = true
 python-versions = "*"
+
+[package.dependencies]
+requests = ">=2.26.0"
 
 [[package]]
 name = "tomli"
@@ -809,7 +812,8 @@ soupsieve = [
     {file = "soupsieve-2.3.2.post1.tar.gz", hash = "sha256:fc53893b3da2c33de295667a0e19f078c14bf86544af307354de5fcf12a3f30d"},
 ]
 speechrecognition = [
-    {file = "SpeechRecognition-3.8.1-py2.py3-none-any.whl", hash = "sha256:4d8f73a0c05ec70331c3bacaa89ecc06dfa8d9aba0899276664cda06ab597e8e"},
+    {file = "SpeechRecognition-3.9.0-py2.py3-none-any.whl", hash = "sha256:6da44facb564b3f2bcee96a2bf876b89a14f61afdee1e7fb12815e58211fd329"},
+    {file = "SpeechRecognition-3.9.0.tar.gz", hash = "sha256:a2f992acda6314a3fa574bf84c2e075ce75f2b4c143b4435d7cbc98f66565ee7"},
 ]
 tomli = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
