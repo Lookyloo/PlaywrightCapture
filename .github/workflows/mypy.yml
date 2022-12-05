@@ -24,7 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip poetry
-        poetry install
+        poetry install --with dev
         poetry run playwright install
 
     - name: Run MyPy
