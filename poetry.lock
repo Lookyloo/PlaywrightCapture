@@ -325,11 +325,14 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "speechrecognition"
-version = "3.8.1"
+version = "3.9.0"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 category = "main"
 optional = true
 python-versions = "*"
+
+[package.dependencies]
+requests = ">=2.26.0"
 
 [[package]]
 name = "tomli"
@@ -349,7 +352,7 @@ python-versions = "*"
 
 [[package]]
 name = "types-dateparser"
-version = "1.1.4.3"
+version = "1.1.4.4"
 description = "Typing stubs for dateparser"
 category = "dev"
 optional = false
@@ -434,7 +437,7 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "81cc92c709ad7084af704acb338b5821bd9a0f73c5b90083bc4b600ce7836039"
+content-hash = "e1323c17e728059d34473ddf2ee4931bf507b177a290e328c4d26ff375f4da6d"
 
 [metadata.files]
 attrs = [
@@ -809,7 +812,8 @@ soupsieve = [
     {file = "soupsieve-2.3.2.post1.tar.gz", hash = "sha256:fc53893b3da2c33de295667a0e19f078c14bf86544af307354de5fcf12a3f30d"},
 ]
 speechrecognition = [
-    {file = "SpeechRecognition-3.8.1-py2.py3-none-any.whl", hash = "sha256:4d8f73a0c05ec70331c3bacaa89ecc06dfa8d9aba0899276664cda06ab597e8e"},
+    {file = "SpeechRecognition-3.9.0-py2.py3-none-any.whl", hash = "sha256:6da44facb564b3f2bcee96a2bf876b89a14f61afdee1e7fb12815e58211fd329"},
+    {file = "SpeechRecognition-3.9.0.tar.gz", hash = "sha256:a2f992acda6314a3fa574bf84c2e075ce75f2b4c143b4435d7cbc98f66565ee7"},
 ]
 tomli = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
@@ -820,8 +824,8 @@ types-beautifulsoup4 = [
     {file = "types_beautifulsoup4-4.11.6.1-py3-none-any.whl", hash = "sha256:c1f803367a2b07ad4fdac40ddbea557010dc4ddd1ee92d801f317eb02e2e3c72"},
 ]
 types-dateparser = [
-    {file = "types-dateparser-1.1.4.3.tar.gz", hash = "sha256:96cb6731afa294bd8e2dd5e7241b6ef945c910b89cc6a323d7c79b6a9ae9f07d"},
-    {file = "types_dateparser-1.1.4.3-py3-none-any.whl", hash = "sha256:1e786834beab287bb6dd13a242f1f910b0e87e2672676155942ba016e8a1ccb6"},
+    {file = "types-dateparser-1.1.4.4.tar.gz", hash = "sha256:65232f1b3a952476fb98b31ae0a4019efd32635981040149b97b161d5ce2b4da"},
+    {file = "types_dateparser-1.1.4.4-py3-none-any.whl", hash = "sha256:5b0c8845167981f68f090894aa371bddbd0371341b90c3f868ac9524cd0a6b69"},
 ]
 types-requests = [
     {file = "types-requests-2.28.11.5.tar.gz", hash = "sha256:a7df37cc6fb6187a84097da951f8e21d335448aa2501a6b0a39cbd1d7ca9ee2a"},
