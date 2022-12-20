@@ -281,11 +281,13 @@ class Capture():
 
         if not recaptcha_init_frame:
             return False
-        await recaptcha_init_frame.click("//div[@class='recaptcha-checkbox-border']")
+        await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").click()
         await page.wait_for_timeout(random.randint(3, 6) * 1000)
-        s = recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']")
-        if await s.get_attribute("aria-checked") != "false":  # solved already
-            return True
+        try:
+            if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").is_checked(timeout=5000):  # solved already
+                return True
+        except PlaywrightTimeoutError:
+            self.logger.debug('Need to solve the captcha.')
 
         recaptcha_testframename = await page.locator("//iframe[contains(@src,'https://google.com/recaptcha/api2/bframe?')]").get_attribute("name")
         if not recaptcha_testframename:
@@ -295,30 +297,37 @@ class Capture():
             return False
 
         # click on audio challenge button
-        await main_frame.click("id=recaptcha-reload-button", timeout=2000,
-                               delay=100, position={'x': 3, 'y': 4})
-        await page.wait_for_timeout(random.randint(1, 3) * 1000)
-        await main_frame.locator("#recaptcha-audio-button").click(timeout=2000)
-
-        # get audio file
-        await page.wait_for_timeout(random.randint(1, 3) * 1000)
-        await main_frame.click("//button[@aria-labelledby='audio-instructions rc-response-label']", timeout=5000)
-        href = await main_frame.locator("//a[@class='rc-audiochallenge-tdownload-link']").get_attribute("href")
-        if not href:
-            return False
-        r = requests.get(href, allow_redirects=True)
-        with NamedTemporaryFile() as mp3_file, NamedTemporaryFile() as wav_file:
-            mp3_file.write(r.content)
-            pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")
-            recognizer = Recognizer()
-            recaptcha_audio = AudioFile(wav_file.name)
-            with recaptcha_audio as source:
-                audio = recognizer.record(source)
-            text = recognizer.recognize_google(audio)
-        await main_frame.fill("id=audio-response", text)
-        await main_frame.click("id=recaptcha-verify-button")
-        await self._safe_wait(page)
-        return True
+        await main_frame.get_by_role("button", name="Get an audio challenge").click()
+        while True:
+            try:
+                href = await main_frame.get_by_role("link", name="Alternatively, download audio as MP3").get_attribute("href")
+            except Exception as e:
+                self.logger.warning(f'Google caught the browser as a robot, sorry: {e}')
+                return False
+            if not href:
+                self.logger.warning('Unable to find download link for captcha.')
+                return False
+            r = requests.get(href, allow_redirects=True)
+            with NamedTemporaryFile() as mp3_file, NamedTemporaryFile() as wav_file:
+                mp3_file.write(r.content)
+                pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")
+                recognizer = Recognizer()
+                recaptcha_audio = AudioFile(wav_file.name)
+                with recaptcha_audio as source:
+                    audio = recognizer.record(source)
+                text = recognizer.recognize_google(audio)
+            await main_frame.get_by_role("textbox", name="Enter what you hear").fill(text)
+            await main_frame.get_by_role("button", name="Verify").click()
+            await self._safe_wait(page)
+            await page.wait_for_timeout(random.randint(3, 6) * 1000)
+            try:
+                if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").is_checked(timeout=5000):
+                    self.logger.info('Captcha solved successfully')
+                    return True
+                elif await main_frame.get_by_role("textbox", name="Enter what you hear").is_editable(timeout=5000):
+                    self.logger.info('Unable to find checkbox, needs to solve more captchas')
+            except PlaywrightTimeoutError as e:
+                self.logger.info(f'Unexpected timeout: {e}')
 
     async def _failsafe_get_content(self, page: Page) -> Optional[str]:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
