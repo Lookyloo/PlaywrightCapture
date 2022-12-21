@@ -368,8 +368,8 @@ class Capture():
             if page:
                 capturing_sub = True
             else:
-                page = await self.context.new_page()
                 capturing_sub = False
+                page = await self.context.new_page()
             try:
                 # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
                 await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
@@ -464,7 +464,7 @@ class Capture():
         except Error as e:
             to_return['error'] = e.message
             # TODO: check e.name and figure out if it is worth retrying or not.
-            self.logger.critical(f'Something went poorly: {e.message}')
+            self.logger.critical(f'Something went poorly with {url}: {e.message}')
         finally:
             if not capturing_sub:
                 to_return['cookies'] = await self.context.cookies()
