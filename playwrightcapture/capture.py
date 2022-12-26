@@ -221,9 +221,15 @@ class Capture():
 
         self.context.set_default_navigation_timeout(self.general_timeout)
         if self.cookies:
-            await self.context.add_cookies(self.cookies)
+            try:
+                await self.context.add_cookies(self.cookies)
+            except Exception:
+                self.logger.exception(f'Unable to set cookies: {self.cookies}')
         if self.headers:
-            await self.context.set_extra_http_headers(self.headers)
+            try:
+                await self.context.set_extra_http_headers(self.headers)
+            except Exception:
+                self.logger.exception(f'Unable to set HTTP Headers: {self.headers}')
 
         # NOTE: Which perms are supported by which browsers varies
         # See https://github.com/microsoft/playwright/issues/16577
