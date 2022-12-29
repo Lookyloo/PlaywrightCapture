@@ -418,9 +418,9 @@ class Capture():
                             self.logger.info('Found a captcha')
                             await self.recaptcha_solver(page)
                     except Error as e:
-                        self.logger.warning(f'Error while resolving captcha: {e}')
+                        self.logger.warning(f'Error while resolving captcha on {url}: {e}')
                     except Exception as e:
-                        self.logger.exception(f'General error with captcha solving: {e}')
+                        self.logger.exception(f'General error with captcha solving on {url}: {e}')
                 # ======
 
                 # check if we have anything on the page. If we don't, the page is not working properly.
