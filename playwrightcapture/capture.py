@@ -280,24 +280,45 @@ class Capture():
             self.__network_not_idle += 1
 
     async def recaptcha_solver(self, page: Page) -> bool:
-        framename = await page.locator("//iframe[@title='reCAPTCHA']").get_attribute("name")
-        if not framename:
+        try:
+            framename = await page.locator("//iframe[@title='reCAPTCHA']").get_attribute("name")
+            if not framename:
+                return False
+        except PlaywrightTimeoutError as e:
+            self.logger.info(f'Captcha not ready: {e}')
             return False
+
         recaptcha_init_frame = page.frame(name=framename)
 
         if not recaptcha_init_frame:
             return False
-        await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").click()
+        try:
+            await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").click()
+        except PlaywrightTimeoutError as e:
+            self.logger.info(f'Checkbox never ready: {e}')
+            return False
+
         await page.wait_for_timeout(random.randint(3, 6) * 1000)
         try:
             if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").is_checked(timeout=5000):  # solved already
                 return True
         except PlaywrightTimeoutError:
-            self.logger.debug('Need to solve the captcha.')
+            self.logger.info('Need to solve the captcha.')
 
-        recaptcha_testframename = await page.locator("//iframe[contains(@src,'https://google.com/recaptcha/api2/bframe?')]").get_attribute("name")
-        if not recaptcha_testframename:
+        possible_urls = ['https://google.com/recaptcha/api2/bframe?', 'https://google.com/recaptcha/enterprise/bframe?']
+        for url in possible_urls:
+            try:
+                recaptcha_testframename = await page.locator(f"//iframe[contains(@src,'{url}')]").get_attribute("name")
+                if recaptcha_testframename:
+                    self.logger.debug(f'Got iframe with {url}')
+                    break
+            except PlaywrightTimeoutError:
+                self.logger.debug(f'Unable to get iframe with {url}')
+                continue
+        else:
+            self.logger.info('Unable to find iframe')
             return False
+
         main_frame = page.frame(name=recaptcha_testframename)
         if not main_frame:
             return False
@@ -414,9 +435,12 @@ class Capture():
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
                 if CAN_SOLVE_CAPTCHA:
                     try:
-                        if await page.is_visible("//iframe[@title='reCAPTCHA']", timeout=5000):
+                        if (await page.locator("//iframe[@title='reCAPTCHA']").is_visible(timeout=5000)
+                                and await page.locator("//iframe[@title='reCAPTCHA']").is_enabled(timeout=5000)):
                             self.logger.info('Found a captcha')
                             await self.recaptcha_solver(page)
+                    except PlaywrightTimeoutError as e:
+                        self.logger.info(f'Captcha on {url} is not ready: {e}')
                     except Error as e:
                         self.logger.warning(f'Error while resolving captcha on {url}: {e}')
                     except Exception as e:
