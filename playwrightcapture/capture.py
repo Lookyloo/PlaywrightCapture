@@ -293,7 +293,11 @@ class Capture():
         if not recaptcha_init_frame:
             return False
         try:
-            await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").click()
+            if await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").is_visible(timeout=5000):
+                await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").click()
+            else:
+                self.logger.info('Checkbox not visible.')
+                return False
         except PlaywrightTimeoutError as e:
             self.logger.info(f'Checkbox never ready: {e}')
             return False
