@@ -348,7 +348,6 @@ files = [
     {file = "lxml-4.9.2-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:b9cc34af337a97d470040f99ba4282f6e6bac88407d021688a5d585e44a23184"},
     {file = "lxml-4.9.2-cp310-cp310-win32.whl", hash = "sha256:d02a5399126a53492415d4906ab0ad0375a5456cc05c3fc0fc4ca11771745cda"},
     {file = "lxml-4.9.2-cp310-cp310-win_amd64.whl", hash = "sha256:a38486985ca49cfa574a507e7a2215c0c780fd1778bb6290c21193b7211702ab"},
-    {file = "lxml-4.9.2-cp311-cp311-macosx_10_15_universal2.whl", hash = "sha256:6943826a0374fb135bb11843594eda9ae150fba9d1d027d2464c713da7c09afe"},
     {file = "lxml-4.9.2-cp311-cp311-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:c83203addf554215463b59f6399835201999b5e48019dc17f182ed5ad87205c9"},
     {file = "lxml-4.9.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:2a87fa548561d2f4643c99cd13131acb607ddabb70682dcf1dff5f71f781a4bf"},
     {file = "lxml-4.9.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:d6b430a9938a5a5d85fc107d852262ddcd48602c120e3dbb02137c83d212b380"},
@@ -359,6 +358,7 @@ files = [
     {file = "lxml-4.9.2-cp35-cp35m-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:ca989b91cf3a3ba28930a9fc1e9aeafc2a395448641df1f387a2d394638943b0"},
     {file = "lxml-4.9.2-cp35-cp35m-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:822068f85e12a6e292803e112ab876bc03ed1f03dddb80154c395f891ca6b31e"},
     {file = "lxml-4.9.2-cp35-cp35m-win32.whl", hash = "sha256:be7292c55101e22f2a3d4d8913944cbea71eea90792bf914add27454a13905df"},
+    {file = "lxml-4.9.2-cp35-cp35m-win_amd64.whl", hash = "sha256:998c7c41910666d2976928c38ea96a70d1aa43be6fe502f21a651e17483a43c5"},
     {file = "lxml-4.9.2-cp36-cp36m-macosx_10_15_x86_64.whl", hash = "sha256:b26a29f0b7fc6f0897f043ca366142d2b609dc60756ee6e4e90b5f762c6adc53"},
     {file = "lxml-4.9.2-cp36-cp36m-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:ab323679b8b3030000f2be63e22cdeea5b47ee0abd2d6a1dc0c8103ddaa56cd7"},
     {file = "lxml-4.9.2-cp36-cp36m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:689bb688a1db722485e4610a503e3e9210dcc20c520b45ac8f7533c837be76fe"},
@@ -368,6 +368,7 @@ files = [
     {file = "lxml-4.9.2-cp36-cp36m-musllinux_1_1_aarch64.whl", hash = "sha256:58bfa3aa19ca4c0f28c5dde0ff56c520fbac6f0daf4fac66ed4c8d2fb7f22e74"},
     {file = "lxml-4.9.2-cp36-cp36m-musllinux_1_1_x86_64.whl", hash = "sha256:bc718cd47b765e790eecb74d044cc8d37d58562f6c314ee9484df26276d36a38"},
     {file = "lxml-4.9.2-cp36-cp36m-win32.whl", hash = "sha256:d5bf6545cd27aaa8a13033ce56354ed9e25ab0e4ac3b5392b763d8d04b08e0c5"},
+    {file = "lxml-4.9.2-cp36-cp36m-win_amd64.whl", hash = "sha256:3ab9fa9d6dc2a7f29d7affdf3edebf6ece6fb28a6d80b14c3b2fb9d39b9322c3"},
     {file = "lxml-4.9.2-cp37-cp37m-macosx_10_15_x86_64.whl", hash = "sha256:05ca3f6abf5cf78fe053da9b1166e062ade3fa5d4f92b4ed688127ea7d7b1d03"},
     {file = "lxml-4.9.2-cp37-cp37m-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:a5da296eb617d18e497bcf0a5c528f5d3b18dadb3619fbdadf4ed2356ef8d941"},
     {file = "lxml-4.9.2-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:04876580c050a8c5341d706dd464ff04fd597095cc8c023252566a8826505726"},
@@ -559,14 +560,14 @@ typing-extensions = "*"
 
 [[package]]
 name = "pytest"
-version = "7.2.0"
+version = "7.2.1"
 description = "pytest: simple powerful testing with Python"
 category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "pytest-7.2.0-py3-none-any.whl", hash = "sha256:892f933d339f068883b6fd5a459f03d85bfcb355e4981e146d2c7616c21fef71"},
-    {file = "pytest-7.2.0.tar.gz", hash = "sha256:c4014eb40e10f11f355ad4e3c2fb2c6c6d1919c73f3b5a433de4708202cade59"},
+    {file = "pytest-7.2.1-py3-none-any.whl", hash = "sha256:c7c6ca206e93355074ae32f7403e8ea12163b1163c976fee7d4d84027c162be5"},
+    {file = "pytest-7.2.1.tar.gz", hash = "sha256:d45e0952f3727241918b8fd0f376f5ff6b301cc0777c6f9a556935c92d8a7d42"},
 ]
 
 [package.dependencies]
@@ -598,14 +599,14 @@ six = ">=1.5"
 
 [[package]]
 name = "pytz"
-version = "2022.7"
+version = "2022.7.1"
 description = "World timezone definitions, modern and historical"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pytz-2022.7-py2.py3-none-any.whl", hash = "sha256:93007def75ae22f7cd991c84e02d434876818661f8df9ad5df9e950ff4e52cfd"},
-    {file = "pytz-2022.7.tar.gz", hash = "sha256:7ccfae7b4b2c067464a6733c6261673fdb8fd1be905460396b97a073e9fa683a"},
+    {file = "pytz-2022.7.1-py2.py3-none-any.whl", hash = "sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a"},
+    {file = "pytz-2022.7.1.tar.gz", hash = "sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0"},
 ]
 
 [[package]]
@@ -797,14 +798,14 @@ files = [
 
 [[package]]
 name = "types-beautifulsoup4"
-version = "4.11.6.2"
+version = "4.11.6.3"
 description = "Typing stubs for beautifulsoup4"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-beautifulsoup4-4.11.6.2.tar.gz", hash = "sha256:dbeb2f82f2d79878107238ab50291361563ae5db99e198a68e91dbb4c0f37b3f"},
-    {file = "types_beautifulsoup4-4.11.6.2-py3-none-any.whl", hash = "sha256:4994a3b5ce66467977d9ce65031f5e212f23af66941669a59f50a1801260d9db"},
+    {file = "types-beautifulsoup4-4.11.6.3.tar.gz", hash = "sha256:484b44ea011ddedc06832f37c5346d2015c822ed9d573cc671a160bb92fbc80d"},
+    {file = "types_beautifulsoup4-4.11.6.3-py3-none-any.whl", hash = "sha256:0b1fd98478824ff60da96f609a08339fdac4e289956c8698638923ae5e4310b9"},
 ]
 
 [package.dependencies]
@@ -812,38 +813,38 @@ types-html5lib = "*"
 
 [[package]]
 name = "types-dateparser"
-version = "1.1.4.4"
+version = "1.1.4.5"
 description = "Typing stubs for dateparser"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-dateparser-1.1.4.4.tar.gz", hash = "sha256:65232f1b3a952476fb98b31ae0a4019efd32635981040149b97b161d5ce2b4da"},
-    {file = "types_dateparser-1.1.4.4-py3-none-any.whl", hash = "sha256:5b0c8845167981f68f090894aa371bddbd0371341b90c3f868ac9524cd0a6b69"},
+    {file = "types-dateparser-1.1.4.5.tar.gz", hash = "sha256:a8872780dc411e9ca5485bf0697355a6543516e11bfe1ed6857362571c3498eb"},
+    {file = "types_dateparser-1.1.4.5-py3-none-any.whl", hash = "sha256:5bc6b6c04d9b4ec64e15be8850dfbefd5c79ad0f4625e503ae80d625cd90e0a4"},
 ]
 
 [[package]]
 name = "types-html5lib"
-version = "1.1.11.10"
+version = "1.1.11.11"
 description = "Typing stubs for html5lib"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-html5lib-1.1.11.10.tar.gz", hash = "sha256:90eeffad04010bf67bcccf77b9cc6cf4783eec13cbd22ebbaaf20f24d5f2ca11"},
-    {file = "types_html5lib-1.1.11.10-py3-none-any.whl", hash = "sha256:18c34ce51eac062321b224365b3aee5b5cdc1613872ed8469c9c0c4ccd3e02e9"},
+    {file = "types-html5lib-1.1.11.11.tar.gz", hash = "sha256:8cf7fb57dcaf3e612806e9bc25ae366ff7ca71a3418ae829f5b1a9c52cbb4960"},
+    {file = "types_html5lib-1.1.11.11-py3-none-any.whl", hash = "sha256:7456a07a4d162bb8c42c2a088c60cca7c63d06cf2c409a8de39536a6cdbbccc2"},
 ]
 
 [[package]]
 name = "types-requests"
-version = "2.28.11.7"
+version = "2.28.11.8"
 description = "Typing stubs for requests"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-requests-2.28.11.7.tar.gz", hash = "sha256:0ae38633734990d019b80f5463dfa164ebd3581998ac8435f526da6fe4d598c3"},
-    {file = "types_requests-2.28.11.7-py3-none-any.whl", hash = "sha256:b6a2fca8109f4fdba33052f11ed86102bddb2338519e1827387137fefc66a98b"},
+    {file = "types-requests-2.28.11.8.tar.gz", hash = "sha256:e67424525f84adfbeab7268a159d3c633862dafae15c5b19547ce1b55954f0a3"},
+    {file = "types_requests-2.28.11.8-py3-none-any.whl", hash = "sha256:61960554baca0008ae7e2db2bd3b322ca9a144d3e80ce270f5fb640817e40994"},
 ]
 
 [package.dependencies]
