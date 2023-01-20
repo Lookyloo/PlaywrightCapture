@@ -798,14 +798,14 @@ files = [
 
 [[package]]
 name = "types-beautifulsoup4"
-version = "4.11.6.3"
+version = "4.11.6.4"
 description = "Typing stubs for beautifulsoup4"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-beautifulsoup4-4.11.6.3.tar.gz", hash = "sha256:484b44ea011ddedc06832f37c5346d2015c822ed9d573cc671a160bb92fbc80d"},
-    {file = "types_beautifulsoup4-4.11.6.3-py3-none-any.whl", hash = "sha256:0b1fd98478824ff60da96f609a08339fdac4e289956c8698638923ae5e4310b9"},
+    {file = "types-beautifulsoup4-4.11.6.4.tar.gz", hash = "sha256:53236c05d035449cc2021ad5d252db8b1ff23dbe280af060f177e6cdb4fcd468"},
+    {file = "types_beautifulsoup4-4.11.6.4-py3-none-any.whl", hash = "sha256:25067e323d8757ebcf6b5177513b8242b9fa2610781e306541279454e536d24b"},
 ]
 
 [package.dependencies]
@@ -942,4 +942,4 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "1a1940a31316bbae283d37fa5bd95195b06bda1f7f4bc035fb5548cf5628d118"
+content-hash = "0c1564fd13f8e4d2e3ece665a968ecf581782f2b865e76a2e6bca77fde7f58c5"
