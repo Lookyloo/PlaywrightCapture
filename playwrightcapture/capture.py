@@ -137,17 +137,27 @@ class Capture():
                         _expire = dateparser.parse(cookie['expires'])
                         if _expire:
                             c['expires'] = _expire.timestamp()
-                    except Exception:
+                    except Exception as e:
+                        self.logger.warning(f'Invalid expiring value: {cookie["expires"]} - {e}')
                         pass
                 elif isinstance(cookie['expires'], (float, int)):
                     c['expires'] = cookie['expires']
+                else:
+                    self.logger.warning(f'Invalid type for the expiring value: {cookie["expires"]} - {type(cookie["expires"])}')
             if 'httpOnly' in cookie:
                 c['httpOnly'] = bool(cookie['httpOnly'])
             if 'secure' in cookie:
                 c['secure'] = bool(cookie['secure'])
             if 'sameSite' in cookie and cookie['sameSite'] in ["Lax", "None", "Strict"]:
                 c['sameSite'] = cookie['sameSite']
-            self._cookies.append(c)
+
+            if 'url' in c or ('domain' in c and 'path' in c):
+                self._cookies.append(c)
+            else:
+                url = cookie.get("url")
+                domain = cookie.get("domain")
+                path = cookie.get("path")
+                self.logger.warning(f'The cookie must have a URL ({url}) or a domain ({domain}) and a path ({path})')
 
     @property
     def headers(self) -> Dict[str, str]:
