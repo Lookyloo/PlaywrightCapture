@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.17.3"
+version = "1.17.4"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -21,7 +21,7 @@ include = ['README.md']
 
 [tool.poetry.dependencies]
 python = "^3.8"
-playwright = "^1.29.1"
+playwright = "^1.30.0"
 dateparser = "^1.1.6"
 beautifulsoup4 = "^4.11.1"
 w3lib = "^2.1.1"
