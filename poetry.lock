@@ -809,14 +809,14 @@ types-html5lib = "*"
 
 [[package]]
 name = "types-dateparser"
-version = "1.1.4.6"
+version = "1.1.4.7"
 description = "Typing stubs for dateparser"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-dateparser-1.1.4.6.tar.gz", hash = "sha256:c6dbe4ed5a3b23ec200e23b55f52fc6c62e1e6ed4fd7fe4f2af9544ea01c465c"},
-    {file = "types_dateparser-1.1.4.6-py3-none-any.whl", hash = "sha256:c9d28c4d2953f54068d63521c1b92775e61c059363dbd37c77f0a524dd838b23"},
+    {file = "types-dateparser-1.1.4.7.tar.gz", hash = "sha256:1c3db120a49fbc3729e6fe32682c80d526c44b147a5378127e23538643797ab7"},
+    {file = "types_dateparser-1.1.4.7-py3-none-any.whl", hash = "sha256:2ac3170e8b8544129de9ba603612b00d04364433bf41513aa031ed1429d5a04c"},
 ]
 
 [[package]]
