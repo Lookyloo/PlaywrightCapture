@@ -938,4 +938,4 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "11e7251b9f18484667ca3536925dbf712b082275137c87b6784516bc336a3732"
+content-hash = "ac15886d9174a4b05930685c994b26dee38e1a98741637f94dbc618bf653772b"
