@@ -526,6 +526,14 @@ class Capture():
         if hasattr(self, '_temp_harfile'):
             os.unlink(self._temp_harfile.name)
 
-        await self.browser.close()
-        # This method *must* be awaited but for some reason, MyPy complains.
-        await self.playwright.stop()  # type: ignore
+        try:
+            await self.browser.close()
+        except Exception as e:
+            # We may land in a situation where the capture was forcefully closed and the browser is already closed
+            self.logger.info(f'Unable to close browser: {e}')
+        try:
+            # This method *must* be awaited but for some reason, MyPy complains.
+            await self.playwright.stop()  # type: ignore
+        except Exception as e:
+            # this should't happen, but just in case it does...
+            self.logger.info(f'Unable to stop playwright: {e}')
