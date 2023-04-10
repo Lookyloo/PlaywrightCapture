@@ -436,7 +436,7 @@ class Capture():
                             raise e
                         to_return['error'] = f"Error while downloading: {error_msg}"
                         self.logger.info(to_return['error'])
-                        self.retry = True
+                        self.should_retry = True
                     except Exception:
                         raise e
             else:
@@ -496,7 +496,9 @@ class Capture():
                     self.logger.info(f'Capturing children, {len(child_urls)} URLs')
                     for url in child_urls:
                         self.logger.info(f'Capture child {url}')
-                        to_return['children'].append(await self.capture_page(url, page.url, page, depth))  # type: ignore
+                        to_return['children'].append(await self.capture_page(url=url, referer=page.url,  # type: ignore
+                                                                             page=page, depth=depth,
+                                                                             rendered_hostname_only=rendered_hostname_only))
                         try:
                             await page.go_back()
                         except PlaywrightTimeoutError as e:
@@ -504,7 +506,7 @@ class Capture():
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
-            self.retry = True
+            self.should_retry = True
         except Error as e:
             to_return['error'] = e.message
             # TODO: check e.name and figure out if it is worth retrying or not.
