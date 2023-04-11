@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import asyncio
 import json
 import os
 import random
@@ -402,8 +403,11 @@ class Capture():
             self.logger.warning(f"Unable to get any screenshot: {e}")
             raise e
 
-    async def capture_page(self, url: str, referer: Optional[str]=None, page: Optional[Page]=None,
-                           depth: int=0, rendered_hostname_only: bool=True) -> CaptureResponse:
+    async def capture_page(self, url: str, *, max_depth_capture_time: Union[int, float],
+                           referer: Optional[str]=None,
+                           page: Optional[Page]=None, depth: int=0,
+                           rendered_hostname_only: bool=True,
+                           ) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
             if page:
@@ -496,9 +500,18 @@ class Capture():
                     self.logger.info(f'Capturing children, {len(child_urls)} URLs')
                     for url in child_urls:
                         self.logger.info(f'Capture child {url}')
-                        to_return['children'].append(await self.capture_page(url=url, referer=page.url,  # type: ignore
-                                                                             page=page, depth=depth,
-                                                                             rendered_hostname_only=rendered_hostname_only))
+                        try:
+                            child_capture = await asyncio.wait_for(
+                                self.capture_page(url=url, referer=page.url,
+                                                  page=page, depth=depth,
+                                                  rendered_hostname_only=rendered_hostname_only,
+                                                  max_depth_capture_time=max_depth_capture_time / len(child_urls)),
+                                timeout=max_depth_capture_time)
+                            to_return['children'].append(child_capture)  # type: ignore
+                        except (TimeoutError, asyncio.exceptions.TimeoutError):
+                            self.logger.warning(f'Timeout error, took more than {max_depth_capture_time}s. Unable to capture {url}.')
+                        else:
+                            self.logger.info(f'Successfully captured child UR: {url}')
                         try:
                             await page.go_back()
                         except PlaywrightTimeoutError as e:
