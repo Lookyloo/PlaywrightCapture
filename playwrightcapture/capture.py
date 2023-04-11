@@ -2,9 +2,10 @@
 
 import asyncio
 import json
+import logging
 import os
 import random
-import logging
+import time
 
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict, Literal
@@ -497,21 +498,24 @@ class Capture():
                     to_return['children'] = []
                     depth -= 1
                     child_urls = get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only)
-                    self.logger.info(f'Capturing children, {len(child_urls)} URLs')
-                    for url in child_urls:
-                        self.logger.info(f'Capture child {url}')
+                    total_urls = len(child_urls)
+                    self.logger.info(f'Capturing children, {total_urls} URLs')
+                    for index, url in enumerate(child_urls):
+                        self.logger.info(f'Capture child {url} - Timeout: {max_depth_capture_time}s')
+                        start_time = time.time()
                         try:
                             child_capture = await asyncio.wait_for(
                                 self.capture_page(url=url, referer=page.url,
                                                   page=page, depth=depth,
                                                   rendered_hostname_only=rendered_hostname_only,
-                                                  max_depth_capture_time=max_depth_capture_time / len(child_urls)),
+                                                  max_depth_capture_time=max_depth_capture_time / total_urls),
                                 timeout=max_depth_capture_time)
                             to_return['children'].append(child_capture)  # type: ignore
                         except (TimeoutError, asyncio.exceptions.TimeoutError):
                             self.logger.warning(f'Timeout error, took more than {max_depth_capture_time}s. Unable to capture {url}.')
                         else:
-                            self.logger.info(f'Successfully captured child UR: {url}')
+                            runtime = time.time() - start_time
+                            self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
                         try:
                             await page.go_back()
                         except PlaywrightTimeoutError as e:
