@@ -499,17 +499,18 @@ class Capture():
                     depth -= 1
                     child_urls = get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only)
                     total_urls = len(child_urls)
+                    max_capture_time = max_depth_capture_time / total_urls
                     self.logger.info(f'Capturing children, {total_urls} URLs')
                     for index, url in enumerate(child_urls):
-                        self.logger.info(f'Capture child {url} - Timeout: {max_depth_capture_time}s')
+                        self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
                         start_time = time.time()
                         try:
                             child_capture = await asyncio.wait_for(
                                 self.capture_page(url=url, referer=page.url,
                                                   page=page, depth=depth,
                                                   rendered_hostname_only=rendered_hostname_only,
-                                                  max_depth_capture_time=max_depth_capture_time / total_urls),
-                                timeout=max_depth_capture_time)
+                                                  max_depth_capture_time=max_capture_time),
+                                timeout=max_capture_time)
                             to_return['children'].append(child_capture)  # type: ignore
                         except (TimeoutError, asyncio.exceptions.TimeoutError):
                             self.logger.warning(f'Timeout error, took more than {max_depth_capture_time}s. Unable to capture {url}.')
