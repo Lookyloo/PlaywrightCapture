@@ -500,6 +500,8 @@ class Capture():
                     child_urls = get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only)
                     total_urls = len(child_urls)
                     max_capture_time = max_depth_capture_time / total_urls
+                    if max_capture_time < self.general_timeout:
+                        self.logger.warning(f'Too many URLs ({total_urls}) to capture in too little time ({max_capture_time}s), this will probably fail. Expected timeout for playwright: {self.general_timeout}.')
                     self.logger.info(f'Capturing children, {total_urls} URLs')
                     for index, url in enumerate(child_urls):
                         self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
