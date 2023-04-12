@@ -51,7 +51,7 @@ class Capture():
     _browsers: List[BROWSER] = ['chromium', 'firefox', 'webkit']
     _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
     _viewport: Optional[ViewportSize] = None
-    _general_timeout: int = 60 * 1000   # in miliseconds, set to 60s by default
+    _general_timeout: Union[int, float] = 60 * 1000   # in miliseconds, set to 60s by default
     _cookies: List[SetCookieParam] = []
     _http_credentials: Dict[str, str] = {}
     _headers: Dict[str, str] = {}
@@ -384,6 +384,9 @@ class Capture():
                 tries -= 1
                 await page.wait_for_timeout(1000)
                 await self._safe_wait(page)
+            except Exception as e:
+                self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
+                break
         self.logger.warning('Unable to get page content.')
         return None
 
@@ -500,8 +503,10 @@ class Capture():
                         depth -= 1
                         total_urls = len(child_urls)
                         max_capture_time = max_depth_capture_time / total_urls
-                        if max_capture_time < (self.general_timeout / 1000):
-                            self.logger.warning(f'Too many URLs ({total_urls}) to capture in too little time ({max_capture_time}s), this will probably fail. Expected timeout for playwright: {self.general_timeout}.')
+                        if max_capture_time < (self.general_timeout / 1000) - 5:
+                            self.logger.warning(f'Too many URLs ({total_urls}) to capture in too little time. Reduce max capture time to {max_capture_time}s.')
+                            # Update the general timeout to something lower than the async io general timeout
+                            self.general_timeout = (max_capture_time - 5) * 1000
                         self.logger.info(f'Capturing children, {total_urls} URLs')
                         for index, url in enumerate(child_urls):
                             self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
@@ -515,7 +520,7 @@ class Capture():
                                     timeout=max_capture_time)
                                 to_return['children'].append(child_capture)  # type: ignore
                             except (TimeoutError, asyncio.exceptions.TimeoutError):
-                                self.logger.warning(f'Timeout error, took more than {max_depth_capture_time}s. Unable to capture {url}.')
+                                self.logger.warning(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                             else:
                                 runtime = int(time.time() - start_time)
                                 self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
@@ -534,9 +539,9 @@ class Capture():
         finally:
             if not capturing_sub:
                 to_return['cookies'] = await self.context.cookies()
-                await self.context.close()  # context needs to be closed to generate the HAR
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
+                    await self.context.close()  # context needs to be closed to generate the HAR
                     with open(self._temp_harfile.name) as _har:
                         to_return['har'] = json.load(_har)
                 except Exception as e:
