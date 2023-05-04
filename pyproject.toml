@@ -21,7 +21,7 @@ include = ['README.md']
 
 [tool.poetry.dependencies]
 python = "^3.8"
-playwright = "^1.32.1"
+playwright = "^1.33.0"
 dateparser = "^1.1.8"
 beautifulsoup4 = "^4.12.2"
 w3lib = "^2.1.1"
