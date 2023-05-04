@@ -559,8 +559,7 @@ class Capture():
             # We may land in a situation where the capture was forcefully closed and the browser is already closed
             self.logger.info(f'Unable to close browser: {e}')
         try:
-            # This method *must* be awaited but for some reason, MyPy complains.
-            await self.playwright.stop()  # type: ignore
+            await self.playwright.stop()
         except Exception as e:
             # this should't happen, but just in case it does...
             self.logger.info(f'Unable to stop playwright: {e}')
