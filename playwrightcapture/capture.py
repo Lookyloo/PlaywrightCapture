@@ -177,8 +177,16 @@ class Capture():
                         header, h_value = splitted
                         if header and h_value:
                             self._headers[header.strip()] = h_value.strip()
+        elif isinstance(headers, dict):
+            # Check if they are valid
+            safe_headers = {name: value for name, value in headers.items() if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()}
+            if safe_headers != headers:
+                self.logger.critical(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')
+            self._headers = safe_headers
         else:
-            self._headers = headers
+            # This shouldn't happen, but somehow it does
+            self.logger.critical(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')  # type: ignore[unreachable]
+            return
 
     @property
     def viewport(self) -> Optional[ViewportSize]:
