@@ -543,7 +543,7 @@ class Capture():
         except Error as e:
             to_return['error'] = e.message
             # TODO: check e.name and figure out if it is worth retrying or not.
-            self.logger.critical(f'Something went poorly with {url}: {e.message}')
+            self.logger.exception(f'Something went poorly with {url}: {e.message}')
         finally:
             if not capturing_sub:
                 to_return['cookies'] = await self.context.cookies()
