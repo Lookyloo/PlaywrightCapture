@@ -553,12 +553,10 @@ class Capture():
                 self.logger.info(f'Unable to process {url}: {e.message}')
                 if e.name == 'net::ERR_CONNECTION_RESET':
                     self.should_retry = True
-            elif e.name in []:
-                # slightly more worrysome
-                self.logger.warning(f'Unable to process {url}: {e.message}')
-            elif e.name in []:
-                # Bad
-                self.logger.critical(f'Unable to process {url}: {e.message}')
+            elif e.name == "NS_BINDING_CANCELLED_OLD_LOAD":
+                # this one sounds like something we can retry...
+                self.logger.info(f'Issue with {url} (retrying): {e.message}')
+                self.should_retry = True
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: {e.message}')
