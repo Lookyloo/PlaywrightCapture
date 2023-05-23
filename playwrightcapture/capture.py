@@ -431,10 +431,13 @@ class Capture():
                 # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
                 await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
             except Error as initial_error:
-                # page.goto failed, but it (might have) triggered a download event.
-                # If it is the case, let's try to save it.
+                self._update_exceptions(initial_error)
+                if self._exception_is_network_error(initial_error):
+                    raise initial_error
                 try:
-                    async with page.expect_download(timeout=5000) as download_info:
+                    # page.goto failed, but it (might have) triggered a download event.
+                    # If it is the case, let's try to save it.
+                    async with page.expect_download(timeout=self.general_timeout - 15000) as download_info:
                         tmp_f = NamedTemporaryFile(delete=False)
                         download = await download_info.value
                         await download.save_as(tmp_f.name)
@@ -534,22 +537,25 @@ class Capture():
                                 self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
                             try:
                                 await page.go_back()
-                            except PlaywrightTimeoutError as e:
-                                self.logger.warning(f'Go back timed out, it is probably not a big deal: {e}')
+                            except PlaywrightTimeoutError:
+                                self.logger.info('Go back timed out, it is probably not a big deal.')
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
             self.should_retry = True
         except Error as e:
+            self._update_exceptions(e)
             to_return['error'] = e.message
-            # TODO: check e.name and figure out if it is worth retrying or not.
-            if e.name in ['NS_ERROR_UNKNOWN_HOST', 'NS_ERROR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET']:
+            # TODO: check e.message and figure out if it is worth retrying or not.
+            # NOTE: e.name is generally (always?) "Error"
+            if self._exception_is_network_error(e):
                 # Expected errors
                 self.logger.info(f'Unable to process {url}: {e.message}')
+                if e.name == 'net::ERR_CONNECTION_RESET':
+                    self.should_retry = True
             elif e.name in []:
                 # slightly more worrysome
                 self.logger.warning(f'Unable to process {url}: {e.message}')
-                pass
             elif e.name in []:
                 # Bad
                 self.logger.critical(f'Unable to process {url}: {e.message}')
@@ -568,6 +574,18 @@ class Capture():
                     to_return['error'] = f'Unable to generate HAR file: {e}'
         self.logger.debug('Capture done')
         return to_return
+
+    def _update_exceptions(self, exception: Error) -> None:
+        splitted = exception.message.split(maxsplit=1)
+        if len(splitted) > 1:
+            exception.name = splitted[0].strip()
+
+    def _exception_is_network_error(self, exception: Error) -> bool:
+        if exception.name in ['NS_ERROR_UNKNOWN_HOST',
+                              'NS_ERROR_CONNECTION_REFUSED',
+                              'net::ERR_CONNECTION_RESET']:
+            return True
+        return False
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         if hasattr(self, '_temp_harfile'):
