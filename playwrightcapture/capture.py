@@ -543,7 +543,19 @@ class Capture():
         except Error as e:
             to_return['error'] = e.message
             # TODO: check e.name and figure out if it is worth retrying or not.
-            self.logger.exception(f'Something went poorly with {url}: {e.message}')
+            if e.name in ['NS_ERROR_UNKNOWN_HOST', 'NS_ERROR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET']:
+                # Expected errors
+                self.logger.info(f'Unable to process {url}: {e.message}')
+            elif e.name in []:
+                # slightly more worrysome
+                self.logger.warning(f'Unable to process {url}: {e.message}')
+                pass
+            elif e.name in []:
+                # Bad
+                self.logger.critical(f'Unable to process {url}: {e.message}')
+            else:
+                # Unexpected ones
+                self.logger.exception(f'Something went poorly with {url}: {e.message}')
         finally:
             if not capturing_sub:
                 to_return['cookies'] = await self.context.cookies()
