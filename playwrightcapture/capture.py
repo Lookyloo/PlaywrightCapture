@@ -407,7 +407,7 @@ class Capture():
         try:
             return await page.screenshot(full_page=True, scale="css")
         except Error as e:
-            self.logger.warning(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
+            self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
 
         try:
             return await page.screenshot()
@@ -553,7 +553,9 @@ class Capture():
                 self.logger.info(f'Unable to process {url}: {e.message}')
                 if e.name == 'net::ERR_CONNECTION_RESET':
                     self.should_retry = True
-            elif e.name == "NS_BINDING_CANCELLED_OLD_LOAD":
+            elif e.name in ['NS_BINDING_CANCELLED_OLD_LOAD',
+                            'NS_BINDING_ABORTED',
+                            'NS_ERROR_PARSED_DATA_CACHED']:
                 # this one sounds like something we can retry...
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
@@ -574,14 +576,29 @@ class Capture():
         return to_return
 
     def _update_exceptions(self, exception: Error) -> None:
-        splitted = exception.message.split(maxsplit=1)
-        if len(splitted) > 1:
-            exception.name = splitted[0].strip()
+        if '\n' in exception.message:
+            name, _ = exception.message.split('\n', maxsplit=1)
+            if ' at ' in name:
+                name, _ = name.split(' at ', maxsplit=1)
+            elif '; ' in name:
+                name, _ = name.split('; ', maxsplit=1)
+            exception.name = name.strip()
 
     def _exception_is_network_error(self, exception: Error) -> bool:
         if exception.name in ['NS_ERROR_UNKNOWN_HOST',
                               'NS_ERROR_CONNECTION_REFUSED',
-                              'net::ERR_CONNECTION_RESET']:
+                              'NS_ERROR_NET_RESET',
+                              'NS_ERROR_UNEXPECTED',
+                              'NS_ERROR_NET_TIMEOUT',
+                              'NS_ERROR_REDIRECT_LOOP',
+                              'net::ERR_CONNECTION_REFUSED',
+                              'net::ERR_CONNECTION_RESET',
+                              'net::ERR_ADDRESS_UNREACHABLE',
+                              'net::ERR_NAME_NOT_RESOLVED',
+                              'net::ERR_SSL_PROTOCOL_ERROR',
+                              'net::ERR_TOO_MANY_REDIRECTS',
+                              'net::ERR_TIMED_OUT',
+                              ]:
             return True
         return False
 
