@@ -559,6 +559,11 @@ class Capture():
                 # this one sounds like something we can retry...
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
+            elif e.name in ['Download is starting',
+                            'Navigation interrupted by another one']:
+                # Other errors, let's give it another shot
+                self.logger.info(f'Issue with {url} (retrying): {e.message}')
+                self.should_retry = True
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: {e.message}')
