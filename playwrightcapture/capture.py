@@ -47,14 +47,15 @@ BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 class Capture():
 
-    _user_agent: str = ''
     _browsers: List[BROWSER] = ['chromium', 'firefox', 'webkit']
     _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
-    _viewport: Optional[ViewportSize] = None
     _general_timeout: Union[int, float] = 60 * 1000   # in miliseconds, set to 60s by default
-    _cookies: List[SetCookieParam] = []
-    _http_credentials: Dict[str, str] = {}
-    _headers: Dict[str, str] = {}
+
+    _user_agent: str
+    _cookies: List[SetCookieParam]
+    _http_credentials: Dict[str, str]
+    _headers: Dict[str, str]
+    _viewport: Optional[ViewportSize]
 
     def __init__(self, browser: Optional[BROWSER]=None, device_name: Optional[str]=None,
                  proxy: Optional[Union[str, Dict[str, str]]]=None,
@@ -83,6 +84,11 @@ class Capture():
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 1
+        self._cookies = []
+        self._http_credentials = {}
+        self._headers = {}
+        self._viewport = None
+        self._user_agent = ''
 
     async def __aenter__(self) -> 'Capture':
         '''Launch the browser'''
@@ -560,7 +566,9 @@ class Capture():
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
             elif e.name in ['Download is starting',
-                            'Navigation interrupted by another one']:
+                            'Connection closed',
+                            'Navigation interrupted by another one',
+                            'Navigation failed because page was closed!']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
@@ -596,6 +604,10 @@ class Capture():
                               'NS_ERROR_UNEXPECTED',
                               'NS_ERROR_NET_TIMEOUT',
                               'NS_ERROR_REDIRECT_LOOP',
+                              'NS_ERROR_NET_INTERRUPT',
+                              'NS_ERROR_UNKNOWN_PROTOCOL',
+                              'NS_ERROR_ABORT',
+                              'net::ERR_EMPTY_RESPONSE',
                               'net::ERR_CONNECTION_REFUSED',
                               'net::ERR_CONNECTION_RESET',
                               'net::ERR_ADDRESS_UNREACHABLE',
@@ -603,6 +615,7 @@ class Capture():
                               'net::ERR_SSL_PROTOCOL_ERROR',
                               'net::ERR_TOO_MANY_REDIRECTS',
                               'net::ERR_TIMED_OUT',
+                              'net::ERR_ABORTED',
                               ]:
             return True
         return False
@@ -620,4 +633,4 @@ class Capture():
             await self.playwright.stop()
         except Exception as e:
             # this should't happen, but just in case it does...
-            self.logger.info(f'Unable to stop playwright: {e}')
+            self.logger.warning(f'Unable to stop playwright: {e}')
