@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 
 from tempfile import NamedTemporaryFile
@@ -176,23 +177,34 @@ class Capture():
         if not headers:
             return
         if isinstance(headers, str):
+            new_headers: Dict[str, str] = {}
             for header_line in headers.splitlines():
                 if header_line and ':' in header_line:
                     splitted = header_line.split(':', 1)
                     if splitted and len(splitted) == 2:
                         header, h_value = splitted
-                        if header and h_value:
-                            self._headers[header.strip()] = h_value.strip()
+                        if header.strip() and h_value.strip():
+                            new_headers[header.strip()] = h_value.strip()
         elif isinstance(headers, dict):
             # Check if they are valid
-            safe_headers = {name: value for name, value in headers.items() if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()}
-            if safe_headers != headers:
+            new_headers = {name.strip(): value.strip() for name, value in headers.items() if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()}
+            if new_headers != headers:
                 self.logger.critical(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')
-            self._headers = safe_headers
         else:
             # This shouldn't happen, but somehow it does
             self.logger.critical(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')  # type: ignore[unreachable]
             return
+
+        # Validate the new headers, only a subset of characters are accepted
+        # https://developers.cloudflare.com/rules/transform/request-header-modification/reference/header-format
+        for name, value in new_headers.items():
+            if re.match(r'^[\w-]+$', name) is None:
+                self.logger.warning(f'Invalid HTTP Header name: {name}')
+                continue
+            if not value.isprintable():
+                self.logger.warning(f'Invalid HTTP Header value: {value}')
+                continue
+            self._headers[name] = value
 
     @property
     def viewport(self) -> Optional[ViewportSize]:
