@@ -513,8 +513,10 @@ class Capture():
                     if parsed_url.fragment:
                         # We got a fragment, go to it
                         try:
-                            await page.locator(f'id={parsed_url.fragment}').scroll_into_view_if_needed()
+                            await page.locator(f'id={parsed_url.fragment}').first.scroll_into_view_if_needed()
                             await self._safe_wait(page)
+                        except PlaywrightTimeoutError as e:
+                            self.logger.info(f'Unable to go to fragment "{parsed_url.fragment}" (timeout): {e}')
                         except Error as e:
                             self.logger.warning(f'Unable to go to fragment "{parsed_url.fragment}": {e}')
 
