@@ -10,6 +10,7 @@ import time
 
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict, Literal
+from urllib.parse import urlparse
 
 import dateparser
 
@@ -445,6 +446,10 @@ class Capture():
             else:
                 capturing_sub = False
                 page = await self.context.new_page()
+
+            # Parse the URL. If there is a fragment, we need to scroll to it manually
+            parsed_url = urlparse(url, allow_fragments=True)
+
             try:
                 # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
                 await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
@@ -501,14 +506,22 @@ class Capture():
                 # check if we have anything on the page. If we don't, the page is not working properly.
                 if await self._failsafe_get_content(page):
                     # move mouse
-                    await page.mouse.move(x=500, y=400)
+                    await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
                     await self._safe_wait(page)
                     self.logger.debug('Moved mouse')
+
+                    if parsed_url.fragment:
+                        # We got a fragment, go to it
+                        try:
+                            await page.locator(f'id={parsed_url.fragment}').scroll_into_view_if_needed()
+                            await self._safe_wait(page)
+                        except Error as e:
+                            self.logger.warning(f'Unable to go to fragment "{parsed_url.fragment}": {e}')
 
                     # scroll
                     try:
                         # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
-                        await page.mouse.wheel(delta_y=2000, delta_x=0)
+                        await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
                         await self._safe_wait(page)
                     except Error as e:
                         self.logger.debug(f'Unable to scroll: {e}')
@@ -610,25 +623,31 @@ class Capture():
             exception.name = name.strip()
 
     def _exception_is_network_error(self, exception: Error) -> bool:
-        if exception.name in ['NS_ERROR_UNKNOWN_HOST',
-                              'NS_ERROR_CONNECTION_REFUSED',
-                              'NS_ERROR_NET_RESET',
-                              'NS_ERROR_UNEXPECTED',
-                              'NS_ERROR_NET_TIMEOUT',
-                              'NS_ERROR_REDIRECT_LOOP',
-                              'NS_ERROR_NET_INTERRUPT',
-                              'NS_ERROR_UNKNOWN_PROTOCOL',
-                              'NS_ERROR_ABORT',
-                              'net::ERR_EMPTY_RESPONSE',
-                              'net::ERR_CONNECTION_REFUSED',
-                              'net::ERR_CONNECTION_RESET',
-                              'net::ERR_ADDRESS_UNREACHABLE',
-                              'net::ERR_NAME_NOT_RESOLVED',
-                              'net::ERR_SSL_PROTOCOL_ERROR',
-                              'net::ERR_TOO_MANY_REDIRECTS',
-                              'net::ERR_TIMED_OUT',
-                              'net::ERR_ABORTED',
-                              ]:
+        if exception.name in [
+                'NS_ERROR_ABORT',
+                'NS_ERROR_CONNECTION_REFUSED',
+                'NS_ERROR_NET_INTERRUPT',
+                'NS_ERROR_NET_RESET',
+                'NS_ERROR_NET_TIMEOUT',
+                'NS_ERROR_REDIRECT_LOOP',
+                'NS_ERROR_UNEXPECTED',
+                'NS_ERROR_UNKNOWN_HOST',
+                'NS_ERROR_UNKNOWN_PROTOCOL',
+                'net::ERR_ABORTED',
+                'net::ERR_ADDRESS_UNREACHABLE',
+                'net::ERR_CONNECTION_CLOSED',
+                'net::ERR_CONNECTION_REFUSED',
+                'net::ERR_CONNECTION_RESET',
+                'net::ERR_EMPTY_RESPONSE',
+                'net::ERR_HTTP2_PROTOCOL_ERROR',
+                'net::ERR_NAME_NOT_RESOLVED',
+                'net::ERR_SOCKS_CONNECTION_FAILED',
+                'net::ERR_SSL_UNRECOGNIZED_NAME_ALERT',
+                'net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH',
+                'net::ERR_SSL_PROTOCOL_ERROR',
+                'net::ERR_TIMED_OUT',
+                'net::ERR_TOO_MANY_REDIRECTS',
+        ]:
             return True
         return False
 
