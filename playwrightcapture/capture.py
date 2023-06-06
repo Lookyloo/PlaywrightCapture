@@ -9,18 +9,21 @@ import re
 import time
 
 from tempfile import NamedTemporaryFile
-from typing import Optional, Dict, List, Union, Any, TypedDict, Literal
-from urllib.parse import urlparse
+from typing import Optional, Dict, List, Union, Any, TypedDict, Literal, TYPE_CHECKING, Set
+from urllib.parse import urlparse, unquote, urljoin
 
 import dateparser
 
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-
-from playwright._impl._api_structures import SetCookieParam
+from w3lib.html import strip_html5_whitespace
+from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
-from .helpers import get_links_from_rendered_page
+
+if TYPE_CHECKING:
+    from playwright._impl._api_structures import SetCookieParam
 
 try:
     import pydub  # type: ignore
@@ -54,7 +57,7 @@ class Capture():
     _general_timeout: Union[int, float] = 60 * 1000   # in miliseconds, set to 60s by default
 
     _user_agent: str
-    _cookies: List[SetCookieParam]
+    _cookies: List['SetCookieParam']
     _http_credentials: Dict[str, str]
     _headers: Dict[str, str]
     _viewport: Optional[ViewportSize]
@@ -119,7 +122,7 @@ class Capture():
         return self._http_credentials
 
     @property
-    def cookies(self) -> List[SetCookieParam]:
+    def cookies(self) -> List['SetCookieParam']:
         return self._cookies
 
     @cookies.setter
@@ -130,7 +133,7 @@ class Capture():
         if not cookies:
             return
         for cookie in cookies:
-            c: SetCookieParam = {
+            c: 'SetCookieParam' = {
                 'name': cookie['name'],
                 'value': cookie['value'],
             }
@@ -190,10 +193,10 @@ class Capture():
             # Check if they are valid
             new_headers = {name.strip(): value.strip() for name, value in headers.items() if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()}
             if new_headers != headers:
-                self.logger.critical(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')
+                self.logger.warning(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')
         else:
-            # This shouldn't happen, but somehow it does
-            self.logger.critical(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')  # type: ignore[unreachable]
+            # This shouldn't happen, but we also cannot ensure the calls leading to this are following the specs, and playwright dislikes invalid HTTP headers.
+            self.logger.warning(f'Wrong type of headers ({type(headers)}): {headers}')  # type: ignore[unreachable]
             return
 
         # Validate the new headers, only a subset of characters are accepted
@@ -434,6 +437,40 @@ class Capture():
             self.logger.warning(f"Unable to get any screenshot: {e}")
             raise e
 
+    def get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> List[str]:
+        def _sanitize(maybe_url: str) -> Optional[str]:
+            href = strip_html5_whitespace(maybe_url)
+            href = safe_url_string(href)
+
+            href = urljoin(rendered_url, href)
+
+            href = canonicalize_url(href, keep_fragments=True)
+            parsed = urlparse(href)
+            if not parsed.netloc:
+                return None
+            return href
+
+        urls: Set[str] = set()
+        soup = BeautifulSoup(rendered_html, "lxml")
+
+        rendered_hostname = urlparse(rendered_url).hostname
+        # The simple ones: the links.
+        for a_tag in soup.find_all(["a", "area"]):
+            href = a_tag.attrs.get("href")
+            if not href:
+                continue
+            try:
+                if href := _sanitize(href):
+                    if not rendered_hostname_only:
+                        urls.add(href)
+                    elif rendered_hostname and urlparse(href).hostname == rendered_hostname:
+                        urls.add(href)
+            except ValueError as e:
+                # unable to sanitize
+                self.logger.warning(f'Unable to sanitize link: "{href}" - {e}')
+
+        return sorted(urls)
+
     async def capture_page(self, url: str, *, max_depth_capture_time: Union[int, float],
                            referer: Optional[str]=None,
                            page: Optional[Page]=None, depth: int=0,
@@ -491,8 +528,8 @@ class Capture():
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
                 if CAN_SOLVE_CAPTCHA:
                     try:
-                        if (await page.locator("//iframe[@title='reCAPTCHA']").is_visible(timeout=5000)
-                                and await page.locator("//iframe[@title='reCAPTCHA']").is_enabled(timeout=5000)):
+                        if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=5000)
+                                and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=5000)):
                             self.logger.info('Found a captcha')
                             await self.recaptcha_solver(page)
                     except PlaywrightTimeoutError as e:
@@ -508,27 +545,33 @@ class Capture():
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
                     await self._safe_wait(page)
-                    self.logger.debug('Moved mouse')
 
                     if parsed_url.fragment:
-                        # We got a fragment, go to it
+                        # We got a fragment, make sure we go to it and scroll only a little bit.
+                        fragment = unquote(parsed_url.fragment)
                         try:
-                            await page.locator(f'id={parsed_url.fragment}').first.scroll_into_view_if_needed()
+                            await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=5000)
                             await self._safe_wait(page)
+                            await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                         except PlaywrightTimeoutError as e:
-                            self.logger.info(f'Unable to go to fragment "{parsed_url.fragment}" (timeout): {e}')
+                            self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
                         except Error as e:
-                            self.logger.warning(f'Unable to go to fragment "{parsed_url.fragment}": {e}')
+                            self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
+                    else:
+                        # scroll more
+                        try:
+                            # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
+                            await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
+                        except Error as e:
+                            self.logger.debug(f'Unable to scroll: {e}')
 
-                    # scroll
+                    await self._safe_wait(page)
                     try:
-                        # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
-                        await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
+                        await page.keyboard.press('PageUp')
                         await self._safe_wait(page)
+                        await page.keyboard.press('PageDown')
                     except Error as e:
-                        self.logger.debug(f'Unable to scroll: {e}')
-                    await page.keyboard.press('PageUp')
-                    self.logger.debug('Scrolled')
+                        self.logger.debug(f'Unable to use keyboard: {e}')
 
                 await self._safe_wait(page)
                 await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
@@ -542,7 +585,7 @@ class Capture():
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 if depth > 0 and to_return.get('html') and to_return['html']:
-                    if child_urls := get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
+                    if child_urls := self.get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
                         to_return['children'] = []
                         depth -= 1
                         total_urls = len(child_urls)
