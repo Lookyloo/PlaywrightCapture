@@ -591,7 +591,7 @@ class Capture():
                         total_urls = len(child_urls)
                         max_capture_time = max_depth_capture_time / total_urls
                         if max_capture_time < (self.general_timeout / 1000) - 5:
-                            self.logger.warning(f'Too many URLs ({total_urls}) to capture in too little time. Reduce max capture time to {max_capture_time}s.')
+                            self.logger.info(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Reduce max capture time to {max_capture_time}s.')
                             # Update the general timeout to something lower than the async io general timeout
                             self.general_timeout = (max_capture_time - 5) * 1000
                         self.logger.info(f'Capturing children, {total_urls} URLs')
