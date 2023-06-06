@@ -607,7 +607,7 @@ class Capture():
                                     timeout=max_capture_time)
                                 to_return['children'].append(child_capture)  # type: ignore
                             except (TimeoutError, asyncio.exceptions.TimeoutError):
-                                self.logger.warning(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
+                                self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                             else:
                                 runtime = int(time.time() - start_time)
                                 self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
