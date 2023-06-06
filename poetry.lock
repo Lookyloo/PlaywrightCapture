@@ -756,6 +756,17 @@ files = [
 ]
 
 [[package]]
+name = "types-pytz"
+version = "2023.3.0.0"
+description = "Typing stubs for pytz"
+optional = false
+python-versions = "*"
+files = [
+    {file = "types-pytz-2023.3.0.0.tar.gz", hash = "sha256:ecdc70d543aaf3616a7e48631543a884f74205f284cefd6649ddf44c6a820aac"},
+    {file = "types_pytz-2023.3.0.0-py3-none-any.whl", hash = "sha256:4fc2a7fbbc315f0b6630e0b899fd6c743705abe1094d007b0e612d10da15e0f3"},
+]
+
+[[package]]
 name = "types-requests"
 version = "2.31.0.1"
 description = "Typing stubs for requests"
@@ -854,4 +865,4 @@ recaptcha = ["SpeechRecognition", "pydub", "requests"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "db122f6b56b3eda54c0fa38ddcfdcc81c95c010181f4ad9833f0c76455679094"
+content-hash = "1dcc675e82c7eb4c76c414c0fc2bacfbcb4bd8504d8ed700912069c48ddaea5e"

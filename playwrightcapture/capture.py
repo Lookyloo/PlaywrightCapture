@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import re
+import sys
 import time
 
 from tempfile import NamedTemporaryFile
@@ -15,15 +16,25 @@ from urllib.parse import urlparse, unquote, urljoin
 import dateparser
 
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright, ProxySettings, Frame, ViewportSize, Cookie, Error, Page
+from playwright.async_api import async_playwright, Frame, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
 
+if sys.version_info < (3, 9):
+    from pytz import all_timezones_set
+else:
+    from zoneinfo import available_timezones
+    all_timezones_set = available_timezones()
+
 if TYPE_CHECKING:
-    from playwright._impl._api_structures import SetCookieParam
+    from playwright._impl._api_structures import (SetCookieParam, Geolocation,
+                                                  HttpCredentials, Headers,
+                                                  ViewportSize, Cookie,
+                                                  ProxySettings)
+    BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
     import pydub  # type: ignore
@@ -38,7 +49,7 @@ class CaptureResponse(TypedDict, total=False):
 
     last_redirected_url: str
     har: Optional[Dict[str, Any]]
-    cookies: Optional[List[Cookie]]
+    cookies: Optional[List['Cookie']]
     error: Optional[str]
     html: Optional[str]
     png: Optional[bytes]
@@ -47,22 +58,13 @@ class CaptureResponse(TypedDict, total=False):
     children: Optional[List[Any]]
 
 
-BROWSER = Literal['chromium', 'firefox', 'webkit']
-
-
 class Capture():
 
-    _browsers: List[BROWSER] = ['chromium', 'firefox', 'webkit']
-    _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
+    _browsers: List['BROWSER'] = ['chromium', 'firefox', 'webkit']
+    _default_viewport: 'ViewportSize' = {'width': 1920, 'height': 1080}
     _general_timeout: Union[int, float] = 60 * 1000   # in miliseconds, set to 60s by default
 
-    _user_agent: str
-    _cookies: List['SetCookieParam']
-    _http_credentials: Dict[str, str]
-    _headers: Dict[str, str]
-    _viewport: Optional[ViewportSize]
-
-    def __init__(self, browser: Optional[BROWSER]=None, device_name: Optional[str]=None,
+    def __init__(self, browser: Optional['BROWSER']=None, device_name: Optional[str]=None,
                  proxy: Optional[Union[str, Dict[str, str]]]=None,
                  general_timeout_in_sec: Optional[int] = None, loglevel: str='INFO'):
         """Captures a page with Playwright.
@@ -76,9 +78,9 @@ class Capture():
         self.logger = logging.getLogger('playwrightcapture')
         self.logger.setLevel(loglevel)
         self.browser_name: BROWSER = browser if browser else 'chromium'
-        self.general_timeout = general_timeout_in_sec * 1000 if general_timeout_in_sec is not None else self._general_timeout
-        self.device_name = device_name
-        self.proxy: Optional[ProxySettings] = None
+        self.general_timeout: Union[int, float] = general_timeout_in_sec * 1000 if general_timeout_in_sec is not None else self._general_timeout
+        self.device_name: Optional[str] = device_name
+        self.proxy: 'ProxySettings' = {}
         if proxy:
             if isinstance(proxy, str):
                 self.proxy = {'server': proxy}
@@ -89,11 +91,15 @@ class Capture():
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 1
-        self._cookies = []
-        self._http_credentials = {}
-        self._headers = {}
-        self._viewport = None
-        self._user_agent = ''
+        self._cookies: List['SetCookieParam'] = []
+        self._http_credentials: 'HttpCredentials' = {}
+        self._geolocation: 'Geolocation' = {}
+        self._headers: 'Headers' = {}
+        self._viewport: Optional['ViewportSize'] = None
+        self._user_agent: str = ''
+        self._timezone_id: str = ''
+        self._locale: str = ''
+        self._color_scheme: str = ''
 
     async def __aenter__(self) -> 'Capture':
         '''Launch the browser'''
@@ -117,9 +123,75 @@ class Capture():
             self.browser = await self.playwright[self.browser_name].launch()
         return self
 
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if hasattr(self, '_temp_harfile'):
+            os.unlink(self._temp_harfile.name)
+
+        try:
+            await self.browser.close()
+        except Exception as e:
+            # We may land in a situation where the capture was forcefully closed and the browser is already closed
+            self.logger.info(f'Unable to close browser: {e}')
+        try:
+            await self.playwright.stop()
+        except Exception as e:
+            # this should't happen, but just in case it does...
+            self.logger.warning(f'Unable to stop playwright: {e}')
+
     @property
-    def http_credentials(self) -> Dict[str, str]:
+    def locale(self) -> str:
+        return self._locale
+
+    @locale.setter
+    def locale(self, locale: Optional[str]) -> None:
+        if locale:
+            self._locale = locale
+
+    @property
+    def timezone_id(self) -> str:
+        return self._timezone_id
+
+    @timezone_id.setter
+    def timezone_id(self, timezone_id: Optional[str]) -> None:
+        if not timezone_id:
+            return
+        if timezone_id in all_timezones_set:
+            self._timezone_id = timezone_id
+        else:
+            raise InvalidPlaywrightParameter(f'The Timezone ID provided ({timezone_id}) is invalid.')
+
+    @property
+    def http_credentials(self) -> 'HttpCredentials':
         return self._http_credentials
+
+    @http_credentials.setter
+    def http_credentials(self, credentials: Optional[Dict[str, str]]) -> None:
+        if not credentials:
+            return
+        if 'username' in credentials and 'password' in credentials:
+            self._http_credentials = {'username': credentials['username'],
+                                      'password': credentials['password'],
+                                      'origin': credentials.get('origin')}
+        else:
+            raise InvalidPlaywrightParameter(f'At least a username and a password are required in the credentials: {credentials}')
+
+    def set_http_credentials(self, username: str, password: str, origin: Optional[str]=None) -> None:
+        self._http_credentials = {'username': username, 'password': password, 'origin': origin}
+
+    @property
+    def geolocation(self) -> 'Geolocation':
+        return self._geolocation
+
+    @geolocation.setter
+    def geolocation(self, geolocation: Optional[Dict[str, float]]) -> None:
+        if not geolocation:
+            return
+        if 'latitude' in geolocation and 'longitude' in geolocation:
+            self._geolocation = {'latitude': geolocation['latitude'],
+                                 'longitude': geolocation['longitude'],
+                                 'accuracy': geolocation.get('accuracy')}
+        else:
+            raise InvalidPlaywrightParameter(f'At least a latitude and a longitude are required in the geolocation: {geolocation}')
 
     @property
     def cookies(self) -> List['SetCookieParam']:
@@ -173,7 +245,7 @@ class Capture():
                 self.logger.warning(f'The cookie must have a URL ({url}) or a domain ({domain}) and a path ({path})')
 
     @property
-    def headers(self) -> Dict[str, str]:
+    def headers(self) -> 'Headers':
         return self._headers
 
     @headers.setter
@@ -211,7 +283,7 @@ class Capture():
             self._headers[name] = value
 
     @property
-    def viewport(self) -> Optional[ViewportSize]:
+    def viewport(self) -> Optional['ViewportSize']:
         return self._viewport
 
     @viewport.setter
@@ -232,6 +304,20 @@ class Capture():
         if user_agent is not None:
             self._user_agent = user_agent
 
+    @property
+    def color_scheme(self) -> str:
+        return self._color_scheme
+
+    @color_scheme.setter
+    def color_scheme(self, color_scheme: Optional[str]) -> None:
+        if not color_scheme:
+            return
+        schemes = ['light', 'dark', 'no-preference']
+        if color_scheme in ['light', 'dark', 'no-preference']:
+            self._color_scheme = color_scheme
+        else:
+            raise InvalidPlaywrightParameter(f'Invalid color scheme ({color_scheme}), must be in {", ".join(schemes)}.')
+
     async def initialize_context(self) -> None:
         default_context_settings = {
             'record_har_path': self._temp_harfile.name,
@@ -248,6 +334,15 @@ class Capture():
             # User defined UA, can overwrite device UA
             default_context_settings['user_agent'] = self.user_agent
 
+        if self.locale:
+            default_context_settings['locale'] = self.locale
+
+        if self.timezone_id:
+            default_context_settings['timezone_id'] = self.timezone_id
+
+        if self.color_scheme:
+            default_context_settings['color_scheme'] = self.color_scheme
+
         if self.viewport:
             # User defined viewport, can overwrite device viewport
             default_context_settings['viewport'] = self.viewport
@@ -260,18 +355,22 @@ class Capture():
             default_context_settings.pop('is_mobile')
 
         self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
-
         self.context.set_default_navigation_timeout(self.general_timeout)
+
         if self.cookies:
             try:
                 await self.context.add_cookies(self.cookies)
             except Exception:
                 self.logger.exception(f'Unable to set cookies: {self.cookies}')
+
         if self.headers:
             try:
                 await self.context.set_extra_http_headers(self.headers)
             except Exception:
                 self.logger.exception(f'Unable to set HTTP Headers: {self.headers}')
+
+        if self.geolocation:
+            await self.context.set_geolocation(self.geolocation)
 
         # NOTE: Which perms are supported by which browsers varies
         # See https://github.com/microsoft/playwright/issues/16577
@@ -303,15 +402,209 @@ class Capture():
         elif self.browser_name == 'chromium':
             await self.context.grant_permissions(chromium_permissions)
 
-    def set_http_credentials(self, username: str, password: str) -> None:
-        self._http_credentials = {'username': username, 'password': password}
+    async def capture_page(self, url: str, *, max_depth_capture_time: Union[int, float],
+                           referer: Optional[str]=None,
+                           page: Optional[Page]=None, depth: int=0,
+                           rendered_hostname_only: bool=True,
+                           ) -> CaptureResponse:
+        to_return: CaptureResponse = {}
+        try:
+            if page:
+                capturing_sub = True
+            else:
+                capturing_sub = False
+                page = await self.context.new_page()
 
-    def make_frame_tree(self, frame: Frame) -> Dict[str, List[Dict[str, Any]]]:
-        # TODO: not used at this time, need to figure out how do use that.
-        to_return: Dict[str, List[Dict[str, Any]]] = {frame._impl_obj._guid: []}
-        for child in frame.child_frames:
-            to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
+            # Parse the URL. If there is a fragment, we need to scroll to it manually
+            parsed_url = urlparse(url, allow_fragments=True)
+
+            try:
+                # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
+                await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
+            except Error as initial_error:
+                self._update_exceptions(initial_error)
+                if self._exception_is_network_error(initial_error):
+                    raise initial_error
+                try:
+                    # page.goto failed, but it (might have) triggered a download event.
+                    # If it is the case, let's try to save it.
+                    async with page.expect_download(timeout=self.general_timeout - 15000) as download_info:
+                        tmp_f = NamedTemporaryFile(delete=False)
+                        download = await download_info.value
+                        await download.save_as(tmp_f.name)
+                        to_return["downloaded_filename"] = download.suggested_filename
+                        with open(tmp_f.name, "rb") as f:
+                            to_return["downloaded_file"] = f.read()
+                        os.unlink(tmp_f.name)
+                except PlaywrightTimeoutError:
+                    self.logger.debug('No download has been triggered.')
+                    raise initial_error
+                except Error as e:
+                    try:
+                        error_msg = download.failure()
+                        if not error_msg:
+                            raise e
+                        to_return['error'] = f"Error while downloading: {error_msg}"
+                        self.logger.info(to_return['error'])
+                        self.should_retry = True
+                    except Exception:
+                        raise e
+            else:
+                await page.bring_to_front()
+
+                # page instrumentation
+                await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
+
+                # ==== recaptcha
+                # Same technique as: https://github.com/NikolaiT/uncaptcha3
+                if CAN_SOLVE_CAPTCHA:
+                    try:
+                        if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=5000)
+                                and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=5000)):
+                            self.logger.info('Found a captcha')
+                            await self._recaptcha_solver(page)
+                    except PlaywrightTimeoutError as e:
+                        self.logger.info(f'Captcha on {url} is not ready: {e}')
+                    except Error as e:
+                        self.logger.warning(f'Error while resolving captcha on {url}: {e}')
+                    except Exception as e:
+                        self.logger.exception(f'General error with captcha solving on {url}: {e}')
+                # ======
+
+                # check if we have anything on the page. If we don't, the page is not working properly.
+                if await self._failsafe_get_content(page):
+                    # move mouse
+                    await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
+                    await self._safe_wait(page)
+
+                    if parsed_url.fragment:
+                        # We got a fragment, make sure we go to it and scroll only a little bit.
+                        fragment = unquote(parsed_url.fragment)
+                        try:
+                            await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=5000)
+                            await self._safe_wait(page)
+                            await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
+                        except PlaywrightTimeoutError as e:
+                            self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
+                        except Error as e:
+                            self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
+                    else:
+                        # scroll more
+                        try:
+                            # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
+                            await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
+                        except Error as e:
+                            self.logger.debug(f'Unable to scroll: {e}')
+
+                    await self._safe_wait(page)
+                    try:
+                        await page.keyboard.press('PageUp')
+                        await self._safe_wait(page)
+                        await page.keyboard.press('PageDown')
+                    except Error as e:
+                        self.logger.debug(f'Unable to use keyboard: {e}')
+
+                await self._safe_wait(page)
+                await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
+                await self._safe_wait(page)
+
+                if content := await self._failsafe_get_content(page):
+                    to_return['html'] = content
+
+                to_return['last_redirected_url'] = page.url
+
+                to_return['png'] = await self._failsafe_get_screenshot(page)
+
+                if depth > 0 and to_return.get('html') and to_return['html']:
+                    if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
+                        to_return['children'] = []
+                        depth -= 1
+                        total_urls = len(child_urls)
+                        max_capture_time = max_depth_capture_time / total_urls
+                        if max_capture_time < (self.general_timeout / 1000) - 5:
+                            self.logger.info(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Reduce max capture time to {max_capture_time}s.')
+                            # Update the general timeout to something lower than the async io general timeout
+                            self.general_timeout = (max_capture_time - 5) * 1000
+                        self.logger.info(f'Capturing children, {total_urls} URLs')
+                        for index, url in enumerate(child_urls):
+                            self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
+                            start_time = time.time()
+                            try:
+                                child_capture = await asyncio.wait_for(
+                                    self.capture_page(url=url, referer=page.url,
+                                                      page=page, depth=depth,
+                                                      rendered_hostname_only=rendered_hostname_only,
+                                                      max_depth_capture_time=max_capture_time),
+                                    timeout=max_capture_time)
+                                to_return['children'].append(child_capture)  # type: ignore
+                            except (TimeoutError, asyncio.exceptions.TimeoutError):
+                                self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
+                            else:
+                                runtime = int(time.time() - start_time)
+                                self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
+                            try:
+                                await page.go_back()
+                            except PlaywrightTimeoutError:
+                                self.logger.info('Go back timed out, it is probably not a big deal.')
+
+        except PlaywrightTimeoutError as e:
+            to_return['error'] = f"The capture took too long - {e.message}"
+            self.should_retry = True
+        except Error as e:
+            self._update_exceptions(e)
+            to_return['error'] = e.message
+            # TODO: check e.message and figure out if it is worth retrying or not.
+            # NOTE: e.name is generally (always?) "Error"
+            if self._exception_is_network_error(e):
+                # Expected errors
+                self.logger.info(f'Unable to process {url}: {e.message}')
+                if e.name == 'net::ERR_CONNECTION_RESET':
+                    self.should_retry = True
+            elif e.name in ['NS_BINDING_CANCELLED_OLD_LOAD',
+                            'NS_BINDING_ABORTED',
+                            'NS_ERROR_PARSED_DATA_CACHED']:
+                # this one sounds like something we can retry...
+                self.logger.info(f'Issue with {url} (retrying): {e.message}')
+                self.should_retry = True
+            elif e.name in ['Download is starting',
+                            'Connection closed',
+                            'Navigation interrupted by another one',
+                            'Navigation failed because page was closed!']:
+                # Other errors, let's give it another shot
+                self.logger.info(f'Issue with {url} (retrying): {e.message}')
+                self.should_retry = True
+            else:
+                # Unexpected ones
+                self.logger.exception(f'Something went poorly with {url}: {e.message}')
+        finally:
+            if not capturing_sub:
+                to_return['cookies'] = await self.context.cookies()
+                # frames_tree = self.make_frame_tree(page.main_frame)
+                try:
+                    await self.context.close()  # context needs to be closed to generate the HAR
+                    with open(self._temp_harfile.name) as _har:
+                        to_return['har'] = json.load(_har)
+                except Exception as e:
+                    to_return['error'] = f'Unable to generate HAR file: {e}'
+        self.logger.debug('Capture done')
         return to_return
+
+    async def _failsafe_get_screenshot(self, page: Page) -> bytes:
+        try:
+            return await page.screenshot(full_page=True)
+        except Error as e:
+            self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
+
+        try:
+            return await page.screenshot(full_page=True, scale="css")
+        except Error as e:
+            self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
+
+        try:
+            return await page.screenshot()
+        except Error as e:
+            self.logger.warning(f"Unable to get any screenshot: {e}")
+            raise e
 
     async def _safe_wait(self, page: Page) -> None:
         try:
@@ -321,7 +614,59 @@ class Capture():
             # Network never idle, keep going
             self.__network_not_idle += 1
 
-    async def recaptcha_solver(self, page: Page) -> bool:
+    async def _failsafe_get_content(self, page: Page) -> Optional[str]:
+        ''' The page might be changing for all kind of reason (generally a JS timeout).
+        In that case, we try a few times to get the HTML.'''
+        tries = 3
+        while tries:
+            try:
+                return await page.content()
+            except Error:
+                self.logger.debug('Unable to get page content, trying again.')
+                tries -= 1
+                await page.wait_for_timeout(1000)
+                await self._safe_wait(page)
+            except Exception as e:
+                self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
+                break
+        self.logger.warning('Unable to get page content.')
+        return None
+
+    def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> List[str]:
+        def _sanitize(maybe_url: str) -> Optional[str]:
+            href = strip_html5_whitespace(maybe_url)
+            href = safe_url_string(href)
+
+            href = urljoin(rendered_url, href)
+
+            href = canonicalize_url(href, keep_fragments=True)
+            parsed = urlparse(href)
+            if not parsed.netloc:
+                return None
+            return href
+
+        urls: Set[str] = set()
+        soup = BeautifulSoup(rendered_html, "lxml")
+
+        rendered_hostname = urlparse(rendered_url).hostname
+        # The simple ones: the links.
+        for a_tag in soup.find_all(["a", "area"]):
+            href = a_tag.attrs.get("href")
+            if not href:
+                continue
+            try:
+                if href := _sanitize(href):
+                    if not rendered_hostname_only:
+                        urls.add(href)
+                    elif rendered_hostname and urlparse(href).hostname == rendered_hostname:
+                        urls.add(href)
+            except ValueError as e:
+                # unable to sanitize
+                self.logger.warning(f'Unable to sanitize link: "{href}" - {e}')
+
+        return sorted(urls)
+
+    async def _recaptcha_solver(self, page: Page) -> bool:
         try:
             framename = await page.locator("//iframe[@title='reCAPTCHA']").get_attribute("name")
             if not framename:
@@ -402,262 +747,6 @@ class Capture():
             except PlaywrightTimeoutError as e:
                 self.logger.info(f'Unexpected timeout: {e}')
 
-    async def _failsafe_get_content(self, page: Page) -> Optional[str]:
-        ''' The page might be changing for all kind of reason (generally a JS timeout).
-        In that case, we try a few times to get the HTML.'''
-        tries = 3
-        while tries:
-            try:
-                return await page.content()
-            except Error:
-                self.logger.debug('Unable to get page content, trying again.')
-                tries -= 1
-                await page.wait_for_timeout(1000)
-                await self._safe_wait(page)
-            except Exception as e:
-                self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
-                break
-        self.logger.warning('Unable to get page content.')
-        return None
-
-    async def _failsafe_get_screenshot(self, page: Page) -> bytes:
-        try:
-            return await page.screenshot(full_page=True)
-        except Error as e:
-            self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
-
-        try:
-            return await page.screenshot(full_page=True, scale="css")
-        except Error as e:
-            self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
-
-        try:
-            return await page.screenshot()
-        except Error as e:
-            self.logger.warning(f"Unable to get any screenshot: {e}")
-            raise e
-
-    def get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> List[str]:
-        def _sanitize(maybe_url: str) -> Optional[str]:
-            href = strip_html5_whitespace(maybe_url)
-            href = safe_url_string(href)
-
-            href = urljoin(rendered_url, href)
-
-            href = canonicalize_url(href, keep_fragments=True)
-            parsed = urlparse(href)
-            if not parsed.netloc:
-                return None
-            return href
-
-        urls: Set[str] = set()
-        soup = BeautifulSoup(rendered_html, "lxml")
-
-        rendered_hostname = urlparse(rendered_url).hostname
-        # The simple ones: the links.
-        for a_tag in soup.find_all(["a", "area"]):
-            href = a_tag.attrs.get("href")
-            if not href:
-                continue
-            try:
-                if href := _sanitize(href):
-                    if not rendered_hostname_only:
-                        urls.add(href)
-                    elif rendered_hostname and urlparse(href).hostname == rendered_hostname:
-                        urls.add(href)
-            except ValueError as e:
-                # unable to sanitize
-                self.logger.warning(f'Unable to sanitize link: "{href}" - {e}')
-
-        return sorted(urls)
-
-    async def capture_page(self, url: str, *, max_depth_capture_time: Union[int, float],
-                           referer: Optional[str]=None,
-                           page: Optional[Page]=None, depth: int=0,
-                           rendered_hostname_only: bool=True,
-                           ) -> CaptureResponse:
-        to_return: CaptureResponse = {}
-        try:
-            if page:
-                capturing_sub = True
-            else:
-                capturing_sub = False
-                page = await self.context.new_page()
-
-            # Parse the URL. If there is a fragment, we need to scroll to it manually
-            parsed_url = urlparse(url, allow_fragments=True)
-
-            try:
-                # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
-                await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
-            except Error as initial_error:
-                self._update_exceptions(initial_error)
-                if self._exception_is_network_error(initial_error):
-                    raise initial_error
-                try:
-                    # page.goto failed, but it (might have) triggered a download event.
-                    # If it is the case, let's try to save it.
-                    async with page.expect_download(timeout=self.general_timeout - 15000) as download_info:
-                        tmp_f = NamedTemporaryFile(delete=False)
-                        download = await download_info.value
-                        await download.save_as(tmp_f.name)
-                        to_return["downloaded_filename"] = download.suggested_filename
-                        with open(tmp_f.name, "rb") as f:
-                            to_return["downloaded_file"] = f.read()
-                        os.unlink(tmp_f.name)
-                except PlaywrightTimeoutError:
-                    self.logger.debug('No download has been triggered.')
-                    raise initial_error
-                except Error as e:
-                    try:
-                        error_msg = download.failure()
-                        if not error_msg:
-                            raise e
-                        to_return['error'] = f"Error while downloading: {error_msg}"
-                        self.logger.info(to_return['error'])
-                        self.should_retry = True
-                    except Exception:
-                        raise e
-            else:
-                await page.bring_to_front()
-
-                # page instrumentation
-                await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
-
-                # ==== recaptcha
-                # Same technique as: https://github.com/NikolaiT/uncaptcha3
-                if CAN_SOLVE_CAPTCHA:
-                    try:
-                        if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=5000)
-                                and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=5000)):
-                            self.logger.info('Found a captcha')
-                            await self.recaptcha_solver(page)
-                    except PlaywrightTimeoutError as e:
-                        self.logger.info(f'Captcha on {url} is not ready: {e}')
-                    except Error as e:
-                        self.logger.warning(f'Error while resolving captcha on {url}: {e}')
-                    except Exception as e:
-                        self.logger.exception(f'General error with captcha solving on {url}: {e}')
-                # ======
-
-                # check if we have anything on the page. If we don't, the page is not working properly.
-                if await self._failsafe_get_content(page):
-                    # move mouse
-                    await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
-                    await self._safe_wait(page)
-
-                    if parsed_url.fragment:
-                        # We got a fragment, make sure we go to it and scroll only a little bit.
-                        fragment = unquote(parsed_url.fragment)
-                        try:
-                            await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=5000)
-                            await self._safe_wait(page)
-                            await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
-                        except PlaywrightTimeoutError as e:
-                            self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
-                        except Error as e:
-                            self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
-                    else:
-                        # scroll more
-                        try:
-                            # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
-                            await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
-                        except Error as e:
-                            self.logger.debug(f'Unable to scroll: {e}')
-
-                    await self._safe_wait(page)
-                    try:
-                        await page.keyboard.press('PageUp')
-                        await self._safe_wait(page)
-                        await page.keyboard.press('PageDown')
-                    except Error as e:
-                        self.logger.debug(f'Unable to use keyboard: {e}')
-
-                await self._safe_wait(page)
-                await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
-                await self._safe_wait(page)
-
-                if content := await self._failsafe_get_content(page):
-                    to_return['html'] = content
-
-                to_return['last_redirected_url'] = page.url
-
-                to_return['png'] = await self._failsafe_get_screenshot(page)
-
-                if depth > 0 and to_return.get('html') and to_return['html']:
-                    if child_urls := self.get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
-                        to_return['children'] = []
-                        depth -= 1
-                        total_urls = len(child_urls)
-                        max_capture_time = max_depth_capture_time / total_urls
-                        if max_capture_time < (self.general_timeout / 1000) - 5:
-                            self.logger.info(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Reduce max capture time to {max_capture_time}s.')
-                            # Update the general timeout to something lower than the async io general timeout
-                            self.general_timeout = (max_capture_time - 5) * 1000
-                        self.logger.info(f'Capturing children, {total_urls} URLs')
-                        for index, url in enumerate(child_urls):
-                            self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
-                            start_time = time.time()
-                            try:
-                                child_capture = await asyncio.wait_for(
-                                    self.capture_page(url=url, referer=page.url,
-                                                      page=page, depth=depth,
-                                                      rendered_hostname_only=rendered_hostname_only,
-                                                      max_depth_capture_time=max_capture_time),
-                                    timeout=max_capture_time)
-                                to_return['children'].append(child_capture)  # type: ignore
-                            except (TimeoutError, asyncio.exceptions.TimeoutError):
-                                self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
-                            else:
-                                runtime = int(time.time() - start_time)
-                                self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
-                            try:
-                                await page.go_back()
-                            except PlaywrightTimeoutError:
-                                self.logger.info('Go back timed out, it is probably not a big deal.')
-
-        except PlaywrightTimeoutError as e:
-            to_return['error'] = f"The capture took too long - {e.message}"
-            self.should_retry = True
-        except Error as e:
-            self._update_exceptions(e)
-            to_return['error'] = e.message
-            # TODO: check e.message and figure out if it is worth retrying or not.
-            # NOTE: e.name is generally (always?) "Error"
-            if self._exception_is_network_error(e):
-                # Expected errors
-                self.logger.info(f'Unable to process {url}: {e.message}')
-                if e.name == 'net::ERR_CONNECTION_RESET':
-                    self.should_retry = True
-            elif e.name in ['NS_BINDING_CANCELLED_OLD_LOAD',
-                            'NS_BINDING_ABORTED',
-                            'NS_ERROR_PARSED_DATA_CACHED']:
-                # this one sounds like something we can retry...
-                self.logger.info(f'Issue with {url} (retrying): {e.message}')
-                self.should_retry = True
-            elif e.name in ['Download is starting',
-                            'Connection closed',
-                            'Navigation interrupted by another one',
-                            'Navigation failed because page was closed!']:
-                # Other errors, let's give it another shot
-                self.logger.info(f'Issue with {url} (retrying): {e.message}')
-                self.should_retry = True
-            else:
-                # Unexpected ones
-                self.logger.exception(f'Something went poorly with {url}: {e.message}')
-        finally:
-            if not capturing_sub:
-                to_return['cookies'] = await self.context.cookies()
-                # frames_tree = self.make_frame_tree(page.main_frame)
-                try:
-                    await self.context.close()  # context needs to be closed to generate the HAR
-                    with open(self._temp_harfile.name) as _har:
-                        to_return['har'] = json.load(_har)
-                except Exception as e:
-                    to_return['error'] = f'Unable to generate HAR file: {e}'
-        self.logger.debug('Capture done')
-        return to_return
-
     def _update_exceptions(self, exception: Error) -> None:
         if '\n' in exception.message:
             name, _ = exception.message.split('\n', maxsplit=1)
@@ -696,17 +785,9 @@ class Capture():
             return True
         return False
 
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        if hasattr(self, '_temp_harfile'):
-            os.unlink(self._temp_harfile.name)
-
-        try:
-            await self.browser.close()
-        except Exception as e:
-            # We may land in a situation where the capture was forcefully closed and the browser is already closed
-            self.logger.info(f'Unable to close browser: {e}')
-        try:
-            await self.playwright.stop()
-        except Exception as e:
-            # this should't happen, but just in case it does...
-            self.logger.warning(f'Unable to stop playwright: {e}')
+    def make_frame_tree(self, frame: Frame) -> Dict[str, List[Dict[str, Any]]]:
+        # TODO: not used at this time, need to figure out how do use that.
+        to_return: Dict[str, List[Dict[str, Any]]] = {frame._impl_obj._guid: []}
+        for child in frame.child_frames:
+            to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
+        return to_return
