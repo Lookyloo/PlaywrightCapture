@@ -170,8 +170,9 @@ class Capture():
             return
         if 'username' in credentials and 'password' in credentials:
             self._http_credentials = {'username': credentials['username'],
-                                      'password': credentials['password'],
-                                      'origin': credentials.get('origin')}
+                                      'password': credentials['password']}
+            if 'origin' in credentials:
+                self._http_credentials['origin'] = credentials['origin']
         else:
             raise InvalidPlaywrightParameter(f'At least a username and a password are required in the credentials: {credentials}')
 
@@ -183,13 +184,14 @@ class Capture():
         return self._geolocation
 
     @geolocation.setter
-    def geolocation(self, geolocation: Optional[Dict[str, float]]) -> None:
+    def geolocation(self, geolocation: Optional[Dict[str, Union[str, int, float]]]) -> None:
         if not geolocation:
             return
         if 'latitude' in geolocation and 'longitude' in geolocation:
-            self._geolocation = {'latitude': geolocation['latitude'],
-                                 'longitude': geolocation['longitude'],
-                                 'accuracy': geolocation.get('accuracy')}
+            self._geolocation = {'latitude': float(geolocation['latitude']),
+                                 'longitude': float(geolocation['longitude'])}
+            if 'accuracy' in geolocation:
+                self._geolocation['accuracy'] = float(geolocation['accuracy'])
         else:
             raise InvalidPlaywrightParameter(f'At least a latitude and a longitude are required in the geolocation: {geolocation}')
 
@@ -287,11 +289,11 @@ class Capture():
         return self._viewport
 
     @viewport.setter
-    def viewport(self, viewport: Optional[Dict[str, int]]) -> None:
+    def viewport(self, viewport: Optional[Dict[str, Union[str, int]]]) -> None:
         if not viewport:
             return
         if 'width' in viewport and 'height' in viewport:
-            self._viewport = {'width': viewport['width'], 'height': viewport['height']}
+            self._viewport = {'width': int(viewport['width']), 'height': int(viewport['height'])}
         else:
             raise InvalidPlaywrightParameter(f'A viewport must have a height and a width - {viewport}')
 
