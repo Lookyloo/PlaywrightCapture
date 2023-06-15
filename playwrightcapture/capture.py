@@ -427,30 +427,35 @@ class Capture():
                 self._update_exceptions(initial_error)
                 if self._exception_is_network_error(initial_error):
                     raise initial_error
-                try:
-                    # page.goto failed, but it (might have) triggered a download event.
-                    # If it is the case, let's try to save it.
-                    async with page.expect_download(timeout=self.general_timeout - 15000) as download_info:
-                        tmp_f = NamedTemporaryFile(delete=False)
-                        download = await download_info.value
-                        await download.save_as(tmp_f.name)
-                        to_return["downloaded_filename"] = download.suggested_filename
-                        with open(tmp_f.name, "rb") as f:
-                            to_return["downloaded_file"] = f.read()
-                        os.unlink(tmp_f.name)
-                except PlaywrightTimeoutError:
-                    self.logger.debug('No download has been triggered.')
-                    raise initial_error
-                except Error as e:
+                elif initial_error.name == 'Download is starting':
+                    # page.goto failed, but it triggered a download event.
+                    # Let's re-trigger it.
                     try:
-                        error_msg = download.failure()
-                        if not error_msg:
+                        async with page.expect_download(timeout=self.general_timeout - 15000) as download_info:
+                            try:
+                                await page.goto(url, timeout=self.general_timeout - 15000, referer=referer if referer else '')
+                            except Exception:
+                                pass
+                            tmp_f = NamedTemporaryFile(delete=False)
+                            download = await download_info.value
+                            await download.save_as(tmp_f.name)
+                            to_return["downloaded_filename"] = download.suggested_filename
+                            with open(tmp_f.name, "rb") as f:
+                                to_return["downloaded_file"] = f.read()
+                            os.unlink(tmp_f.name)
+                    except PlaywrightTimeoutError:
+                        self.logger.debug('No download has been triggered.')
+                        raise initial_error
+                    except Error as e:
+                        try:
+                            error_msg = download.failure()
+                            if not error_msg:
+                                raise e
+                            to_return['error'] = f"Error while downloading: {error_msg}"
+                            self.logger.info(to_return['error'])
+                            self.should_retry = True
+                        except Exception:
                             raise e
-                        to_return['error'] = f"Error while downloading: {error_msg}"
-                        self.logger.info(to_return['error'])
-                        self.should_retry = True
-                    except Exception:
-                        raise e
             else:
                 await page.bring_to_front()
 
