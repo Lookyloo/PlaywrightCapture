@@ -675,7 +675,7 @@ class Capture():
 
     async def _recaptcha_solver(self, page: Page) -> bool:
         try:
-            framename = await page.locator("//iframe[@title='reCAPTCHA']").get_attribute("name")
+            framename = await page.locator("//iframe[@title='reCAPTCHA']").first.get_attribute("name")
             if not framename:
                 return False
         except PlaywrightTimeoutError as e:
@@ -698,7 +698,7 @@ class Capture():
 
         await page.wait_for_timeout(random.randint(3, 6) * 1000)
         try:
-            if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").is_checked(timeout=5000):  # solved already
+            if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").first.is_checked(timeout=5000):  # solved already
                 return True
         except PlaywrightTimeoutError:
             self.logger.info('Need to solve the captcha.')
@@ -706,7 +706,7 @@ class Capture():
         possible_urls = ['https://google.com/recaptcha/api2/bframe?', 'https://google.com/recaptcha/enterprise/bframe?']
         for url in possible_urls:
             try:
-                recaptcha_testframename = await page.locator(f"//iframe[contains(@src,'{url}')]").get_attribute("name")
+                recaptcha_testframename = await page.locator(f"//iframe[contains(@src,'{url}')]").first.get_attribute("name")
                 if recaptcha_testframename:
                     self.logger.debug(f'Got iframe with {url}')
                     break
@@ -746,7 +746,7 @@ class Capture():
             await self._safe_wait(page)
             await page.wait_for_timeout(random.randint(3, 6) * 1000)
             try:
-                if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").is_checked(timeout=5000):
+                if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").first.is_checked(timeout=5000):
                     self.logger.info('Captcha solved successfully')
                     return True
                 elif await main_frame.get_by_role("textbox", name="Enter what you hear").is_editable(timeout=5000):
