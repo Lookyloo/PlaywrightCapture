@@ -425,9 +425,8 @@ class Capture():
                 await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
             except Error as initial_error:
                 self._update_exceptions(initial_error)
-                if self._exception_is_network_error(initial_error):
-                    raise initial_error
-                elif initial_error.name == 'Download is starting':
+                # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
+                if initial_error.name in ['Download is starting', 'net::ERR_ABORTED']:
                     # page.goto failed, but it triggered a download event.
                     # Let's re-trigger it.
                     try:
@@ -456,6 +455,8 @@ class Capture():
                             self.should_retry = True
                         except Exception:
                             raise e
+                elif self._exception_is_network_error(initial_error):
+                    raise initial_error
             else:
                 await page.bring_to_front()
 
