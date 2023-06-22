@@ -51,6 +51,7 @@ class CaptureResponse(TypedDict, total=False):
     har: Optional[Dict[str, Any]]
     cookies: Optional[List['Cookie']]
     error: Optional[str]
+    error_name: Optional[str]
     html: Optional[str]
     png: Optional[bytes]
     downloaded_filename: Optional[str]
@@ -561,6 +562,7 @@ class Capture():
         except Error as e:
             self._update_exceptions(e)
             to_return['error'] = e.message
+            to_return['error_name'] = e.name
             # TODO: check e.message and figure out if it is worth retrying or not.
             # NOTE: e.name is generally (always?) "Error"
             if self._exception_is_network_error(e):
@@ -577,7 +579,9 @@ class Capture():
             elif e.name in ['Download is starting',
                             'Connection closed',
                             'Navigation interrupted by another one',
-                            'Navigation failed because page was closed!']:
+                            'Navigation failed because page was closed!',
+                            'Connection closed while reading from the driver',
+                            'Protocol error (Page.bringToFront): Not attached to an active page']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
