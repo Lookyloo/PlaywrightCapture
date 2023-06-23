@@ -270,8 +270,9 @@ class Capture():
             if new_headers != headers:
                 self.logger.warning(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')
         else:
-            # This shouldn't happen, but we also cannot ensure the calls leading to this are following the specs, and playwright dislikes invalid HTTP headers.
-            self.logger.warning(f'Wrong type of headers ({type(headers)}): {headers}')  # type: ignore[unreachable]
+            # This shouldn't happen, but we also cannot ensure the calls leading to this are following the specs,
+            # and playwright dislikes invalid HTTP headers so we rather drop them.
+            self.logger.info(f'Wrong type of headers ({type(headers)}): {headers}')  # type: ignore[unreachable]
             return
 
         # Validate the new headers, only a subset of characters are accepted
