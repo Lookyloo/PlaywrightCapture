@@ -581,7 +581,6 @@ class Capture():
                             'Connection closed',
                             'Navigation interrupted by another one',
                             'Navigation failed because page was closed!',
-                            'Connection closed while reading from the driver',
                             'Protocol error (Page.bringToFront): Not attached to an active page']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
@@ -589,6 +588,14 @@ class Capture():
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: {e.message}')
+        except Exception as e:
+            # we may get a non-playwright exception to.
+            # The ones we try to handle here should be treated as if they were.
+            if str(e) in ['Connection closed while reading from the driver']:
+                self.logger.info(f'Issue with {url} (retrying): {e}')
+                self.should_retry = True
+            else:
+                raise e
         finally:
             if not capturing_sub:
                 to_return['cookies'] = await self.context.cookies()
