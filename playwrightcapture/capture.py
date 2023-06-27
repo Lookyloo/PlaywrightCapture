@@ -573,7 +573,8 @@ class Capture():
                     self.should_retry = True
             elif e.name in ['NS_BINDING_CANCELLED_OLD_LOAD',
                             'NS_BINDING_ABORTED',
-                            'NS_ERROR_PARSED_DATA_CACHED']:
+                            'NS_ERROR_PARSED_DATA_CACHED',
+                            'NS_ERROR_DOCUMENT_NOT_CACHED']:
                 # this one sounds like something we can retry...
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
