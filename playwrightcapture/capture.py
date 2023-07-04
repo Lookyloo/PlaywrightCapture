@@ -599,7 +599,10 @@ class Capture():
                 raise e
         finally:
             if not capturing_sub:
-                to_return['cookies'] = await self.context.cookies()
+                try:
+                    to_return['cookies'] = await self.context.cookies()
+                except Exception as e:
+                    to_return['error'] = f'Unable to get the cookies: {e}'
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
                     await self.context.close()  # context needs to be closed to generate the HAR
