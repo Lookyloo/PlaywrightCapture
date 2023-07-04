@@ -592,7 +592,8 @@ class Capture():
         except Exception as e:
             # we may get a non-playwright exception to.
             # The ones we try to handle here should be treated as if they were.
-            if str(e) in ['Connection closed while reading from the driver']:
+            to_return['error'] = str(e)
+            if to_return['error'] in ['Connection closed while reading from the driver']:
                 self.logger.info(f'Issue with {url} (retrying): {e}')
                 self.should_retry = True
             else:
@@ -602,14 +603,16 @@ class Capture():
                 try:
                     to_return['cookies'] = await self.context.cookies()
                 except Exception as e:
-                    to_return['error'] = f'Unable to get the cookies: {e}'
+                    if 'error' not in to_return:
+                        to_return['error'] = f'Unable to get the cookies: {e}'
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
                     await self.context.close()  # context needs to be closed to generate the HAR
                     with open(self._temp_harfile.name) as _har:
                         to_return['har'] = json.load(_har)
                 except Exception as e:
-                    to_return['error'] = f'Unable to generate HAR file: {e}'
+                    if 'error' not in to_return:
+                        to_return['error'] = f'Unable to generate HAR file: {e}'
         self.logger.debug('Capture done')
         return to_return
 
