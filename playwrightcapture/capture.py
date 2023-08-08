@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import binascii
 import json
 import logging
 import os
@@ -9,13 +10,16 @@ import re
 import sys
 import time
 
+from base64 import b64decode
 from tempfile import NamedTemporaryFile
-from typing import Optional, Dict, List, Union, Any, TypedDict, Literal, TYPE_CHECKING, Set
+from typing import Optional, Dict, List, Union, Any, TypedDict, Literal, TYPE_CHECKING, Set, Tuple
 from urllib.parse import urlparse, unquote, urljoin
 
 import dateparser
+import requests
 
 from bs4 import BeautifulSoup
+from charset_normalizer import from_bytes
 from playwright.async_api import async_playwright, Frame, Error, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from w3lib.html import strip_html5_whitespace
@@ -38,7 +42,6 @@ if TYPE_CHECKING:
 
 try:
     import pydub  # type: ignore
-    import requests
     from speech_recognition import Recognizer, AudioFile  # type: ignore
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
@@ -57,6 +60,11 @@ class CaptureResponse(TypedDict, total=False):
     downloaded_filename: Optional[str]
     downloaded_file: Optional[bytes]
     children: Optional[List[Any]]
+
+    # One day, playwright will support getting the favicon from the capture itself
+    # favicon: Optional[bytes]
+    # in the meantime, we need a workaround: https://github.com/Lookyloo/PlaywrightCapture/issues/45
+    potential_favicons: Optional[Set[bytes]]
 
 
 class Capture():
@@ -410,6 +418,7 @@ class Capture():
                            referer: Optional[str]=None,
                            page: Optional[Page]=None, depth: int=0,
                            rendered_hostname_only: bool=True,
+                           with_favicon: bool=False
                            ) -> CaptureResponse:
         to_return: CaptureResponse = {}
         try:
@@ -524,6 +533,9 @@ class Capture():
                 to_return['last_redirected_url'] = page.url
 
                 to_return['png'] = await self._failsafe_get_screenshot(page)
+
+                if 'html' in to_return and to_return['html'] is not None and with_favicon:
+                    to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
 
                 if depth > 0 and to_return.get('html') and to_return['html']:
                     if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
@@ -818,3 +830,118 @@ class Capture():
         for child in frame.child_frames:
             to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
         return to_return
+
+    # #### Manual favicon extractor, will be removed if/when Playwright supports getting the favicon.
+
+    # Method copied from HAR2Tree
+    def __parse_data_uri(self, uri: str) -> Optional[Tuple[str, str, bytes]]:
+        if not uri.startswith('data:'):
+            return None
+        uri = uri[5:]
+        if ';base64' in uri:
+            mime, b64data = uri.split(';base64', 1)
+            if not b64data or b64data[0] != ',':
+                self.logger.warning(f'Unable to decode {b64data}: empty or missing leading ",".')
+                return None
+            b64data = b64data[1:].strip()
+            if not re.fullmatch('[A-Za-z0-9+/]*={0,2}', b64data):
+                self.logger.warning(f'Unable to decode {b64data}: invalid characters.')
+                return None
+            if len(b64data) % 4:
+                # Note: Too many = isn't a problem.
+                b64data += "==="
+            try:
+                data = b64decode(b64data)
+            except binascii.Error as e:
+                # Incorrect padding
+                self.logger.warning(f'Unable to decode {uri}: {e}')
+                return None
+        else:
+            if ',' not in uri:
+                self.logger.warning(f'Unable to decode {uri}, missing ","')
+                return None
+            mime, d = uri.split(',', 1)
+            data = d.encode()
+
+        if mime:
+            if ';' in mime:
+                mime, mimeparams = mime.split(';', 1)
+            else:
+                mimeparams = ''
+        else:
+            mime = '[No mimetype given]'
+            mimeparams = ''
+        return mime, mimeparams, data
+
+    def __extract_favicons(self, rendered_content: Union[str, bytes]) -> Optional[Tuple[Set[str], Set[bytes]]]:
+        if isinstance(rendered_content, bytes):
+            rendered_content = str(from_bytes(rendered_content).best())
+            if not rendered_content:
+                return None
+        soup = BeautifulSoup(rendered_content, 'lxml')
+        all_icons = set()
+        favicons_urls = set()
+        favicons = set()
+        # shortcut
+        for shortcut in soup.find_all('link', rel='shortcut icon'):
+            all_icons.add(shortcut)
+        # icons
+        for icon in soup.find_all('link', rel='icon'):
+            all_icons.add(icon)
+
+        for mask_icon in soup.find_all('link', rel='mask-icon'):
+            all_icons.add(mask_icon)
+        for apple_touche_icon in soup.find_all('link', rel='apple-touch-icon'):
+            all_icons.add(apple_touche_icon)
+        for msapplication in soup.find_all('meta', attrs={'name': 'msapplication-TileImage'}):  # msapplication-TileColor
+            all_icons.add(msapplication)
+
+        for tag in all_icons:
+            if icon_url := tag.get('href'):
+                if parsed_uri := self.__parse_data_uri(icon_url):
+                    mime, mimeparams, favicon = parsed_uri
+                    favicons.add(favicon)
+                else:
+                    # NOTE: This urn can be a path without the domain part. We need to urljoin
+                    favicons_urls.add(icon_url)
+            elif tag.get('name') == 'msapplication-TileImage':
+                if icon_url := tag.get('content'):
+                    if parsed_uri := self.__parse_data_uri(icon_url):
+                        mime, mimeparams, favicon = parsed_uri
+                        favicons.add(favicon)
+                    else:
+                        # NOTE: This urn can be a path without the domain part. We need to urljoin
+                        favicons_urls.add(icon_url)
+            else:
+                self.logger.info(f'Not processing {tag}')
+
+        # print(favicons_urls)
+        return favicons_urls, favicons
+
+    def get_favicons(self, rendered_url: str, rendered_content: str) -> Set[bytes]:
+        """This method will be deprecated as soon as Playwright will be able to fetch favicons (https://github.com/microsoft/playwright/issues/7493).
+        In the meantime, we try to get all the potential ones in this method.
+        Method inspired by https://github.com/ail-project/ail-framework/blob/master/bin/lib/crawlers.py
+        """
+        extracted_favicons = self.__extract_favicons(rendered_content)
+        if not extracted_favicons:
+            return set()
+        to_fetch, to_return = extracted_favicons
+        to_fetch.add('/favicon.ico')
+        session = requests.session()
+        session.headers['user-agent'] = self.user_agent
+        if self.proxy and self.proxy.get('server'):
+            proxies = {'http': self.proxy['server'],
+                       'https': self.proxy['server']}
+            session.proxies.update(proxies)
+        for u in to_fetch:
+            try:
+                favicon_response = session.get(urljoin(rendered_url, u))
+                favicon_response.raise_for_status()
+                to_return.add(favicon_response.content)
+            except Exception as e:
+                self.logger.warning(f'Unable to fetch favicon from {u}: {e}')
+
+        return to_return
+
+    # END FAVICON EXTRACTOR
