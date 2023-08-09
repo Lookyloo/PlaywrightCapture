@@ -936,7 +936,7 @@ class Capture():
             session.proxies.update(proxies)
         for u in to_fetch:
             try:
-                favicon_response = session.get(urljoin(rendered_url, u))
+                favicon_response = session.get(urljoin(rendered_url, u), timeout=32)
                 favicon_response.raise_for_status()
                 to_return.add(favicon_response.content)
             except Exception as e:
