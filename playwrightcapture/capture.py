@@ -59,7 +59,7 @@ class CaptureResponse(TypedDict, total=False):
     png: Optional[bytes]
     downloaded_filename: Optional[str]
     downloaded_file: Optional[bytes]
-    children: Optional[List[Any]]
+    children: Optional[List['CaptureResponse']]
 
     # One day, playwright will support getting the favicon from the capture itself
     # favicon: Optional[bytes]
@@ -145,7 +145,7 @@ class Capture():
             await self.playwright.stop()
         except Exception as e:
             # this should't happen, but just in case it does...
-            self.logger.warning(f'Unable to stop playwright: {e}')
+            self.logger.info(f'Unable to stop playwright: {e}')
 
     @property
     def locale(self) -> str:
