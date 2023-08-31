@@ -430,14 +430,13 @@ class Capture():
                            with_favicon: bool=False
                            ) -> CaptureResponse:
         to_return: CaptureResponse = {}
+        if page is not None:
+            capturing_sub = True
+        else:
+            capturing_sub = False
+            page = await self.context.new_page()
+            page.set_default_timeout(self._capture_timeout * 1000)
         try:
-            if page:
-                capturing_sub = True
-            else:
-                capturing_sub = False
-                page = await self.context.new_page()
-                page.set_default_timeout(self._capture_timeout * 1000)
-
             # Parse the URL. If there is a fragment, we need to scroll to it manually
             parsed_url = urlparse(url, allow_fragments=True)
 
