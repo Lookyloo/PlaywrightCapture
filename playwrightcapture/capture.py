@@ -71,7 +71,8 @@ class Capture():
 
     _browsers: List['BROWSER'] = ['chromium', 'firefox', 'webkit']
     _default_viewport: 'ViewportSize' = {'width': 1920, 'height': 1080}
-    _general_timeout: Union[int, float] = 60 * 1000   # in miliseconds, set to 60s by default
+    _default_timeout: int = 90  # set to 90s by default
+    _minimal_timeout: int = 15  # set to 15s - It makes little sense to attempt a capture below that limit.
 
     def __init__(self, browser: Optional['BROWSER']=None, device_name: Optional[str]=None,
                  proxy: Optional[Union[str, Dict[str, str]]]=None,
@@ -81,13 +82,21 @@ class Capture():
         :param browser: The browser to use for the capture.
         :param device_name: The pre-defined device to use for the capture (from playwright).)
         :param proxy: The external proxy to use for the capture.
-        :param general_timeout_in_sec: The general timeout for the capture.
+        :param general_timeout_in_sec: The general timeout for the capture, including children.
         :param loglevel: Python loglevel
         """
         self.logger = logging.getLogger('playwrightcapture')
         self.logger.setLevel(loglevel)
         self.browser_name: BROWSER = browser if browser else 'chromium'
-        self.general_timeout: Union[int, float] = general_timeout_in_sec * 1000 if general_timeout_in_sec is not None else self._general_timeout
+
+        if general_timeout_in_sec is None:
+            self._capture_timeout = self._default_timeout
+        else:
+            self._capture_timeout = general_timeout_in_sec
+            if self._capture_timeout < self._minimal_timeout:
+                self.logger.warning(f'Timeout given: {general_timeout_in_sec}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
+                self._capture_timeout = self._minimal_timeout
+
         self.device_name: Optional[str] = device_name
         self.proxy: 'ProxySettings' = {}
         if proxy:
@@ -367,7 +376,7 @@ class Capture():
             default_context_settings.pop('is_mobile')
 
         self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
-        self.context.set_default_navigation_timeout(self.general_timeout)
+        self.context.set_default_timeout(self._capture_timeout * 1000)
 
         if self.cookies:
             try:
@@ -414,7 +423,7 @@ class Capture():
         elif self.browser_name == 'chromium':
             await self.context.grant_permissions(chromium_permissions)
 
-    async def capture_page(self, url: str, *, max_depth_capture_time: Union[int, float],
+    async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: Optional[str]=None,
                            page: Optional[Page]=None, depth: int=0,
                            rendered_hostname_only: bool=True,
@@ -427,13 +436,14 @@ class Capture():
             else:
                 capturing_sub = False
                 page = await self.context.new_page()
+                page.set_default_timeout(self._capture_timeout * 1000)
 
             # Parse the URL. If there is a fragment, we need to scroll to it manually
             parsed_url = urlparse(url, allow_fragments=True)
 
             try:
                 # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
-                await page.goto(url, wait_until='domcontentloaded', timeout=self.general_timeout - 15000, referer=referer if referer else '')
+                await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
             except Error as initial_error:
                 self._update_exceptions(initial_error)
                 # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
@@ -441,9 +451,9 @@ class Capture():
                     # page.goto failed, but it triggered a download event.
                     # Let's re-trigger it.
                     try:
-                        async with page.expect_download(timeout=self.general_timeout - 15000) as download_info:
+                        async with page.expect_download() as download_info:
                             try:
-                                await page.goto(url, timeout=self.general_timeout - 15000, referer=referer if referer else '')
+                                await page.goto(url, referer=referer if referer else '')
                             except Exception:
                                 pass
                             tmp_f = NamedTemporaryFile(delete=False)
@@ -542,12 +552,16 @@ class Capture():
                         to_return['children'] = []
                         depth -= 1
                         total_urls = len(child_urls)
-                        max_capture_time = max_depth_capture_time / total_urls
-                        if max_capture_time < (self.general_timeout / 1000) - 5:
-                            self.logger.info(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Reduce max capture time to {max_capture_time}s.')
-                            # Update the general timeout to something lower than the async io general timeout
-                            self.general_timeout = (max_capture_time - 5) * 1000
-                        self.logger.info(f'Capturing children, {total_urls} URLs')
+                        max_capture_time = max(int(max_depth_capture_time / total_urls), self._minimal_timeout)
+                        max_captures = int(max_depth_capture_time / max_capture_time)
+                        if max_captures < total_urls:
+                            self.logger.warning(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Only capturing the first {max_captures} URLs in the page.')
+                            if max_captures <= 0:
+                                # We don't really have time for even one capture, but let's try anyway.
+                                child_urls = child_urls[:1]
+                            else:
+                                child_urls = child_urls[:max_captures]
+                        self.logger.info(f'Capturing children, {max_captures} URLs')
                         for index, url in enumerate(child_urls):
                             self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
                             start_time = time.time()
@@ -557,10 +571,12 @@ class Capture():
                                                       page=page, depth=depth,
                                                       rendered_hostname_only=rendered_hostname_only,
                                                       max_depth_capture_time=max_capture_time),
-                                    timeout=max_capture_time)
+                                    timeout=max_capture_time + 1)  # just adding a bit of padding so playwright has the chance to raise the exception first
                                 to_return['children'].append(child_capture)  # type: ignore
                             except (TimeoutError, asyncio.exceptions.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
+                            except Exception as e:
+                                self.logger.warning(f'Error while capturing child "{url}": {e}. {total_urls - index - 1} more to go.')
                             else:
                                 runtime = int(time.time() - start_time)
                                 self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
@@ -568,6 +584,8 @@ class Capture():
                                 await page.go_back()
                             except PlaywrightTimeoutError:
                                 self.logger.info('Go back timed out, it is probably not a big deal.')
+                            except Exception as e:
+                                self.logger.warning(f'Unable to go back: {e}.')
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
