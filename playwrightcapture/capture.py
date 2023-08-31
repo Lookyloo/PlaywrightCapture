@@ -629,17 +629,22 @@ class Capture():
             else:
                 raise e
         finally:
+            self.logger.debug('Finishing up capture.')
             if not capturing_sub:
                 try:
                     to_return['cookies'] = await self.context.cookies()
+                    self.logger.debug('Done with cookies.')
                 except Exception as e:
                     if 'error' not in to_return:
                         to_return['error'] = f'Unable to get the cookies: {e}'
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
+                    await page.close()
                     await self.context.close()  # context needs to be closed to generate the HAR
+                    self.logger.debug('Context closed.')
                     with open(self._temp_harfile.name) as _har:
                         to_return['har'] = json.load(_har)
+                    self.logger.debug('Got HAR.')
                 except Exception as e:
                     if 'error' not in to_return:
                         to_return['error'] = f'Unable to generate HAR file: {e}'
@@ -954,11 +959,13 @@ class Capture():
             session.proxies.update(proxies)
         for u in to_fetch:
             try:
-                favicon_response = session.get(urljoin(rendered_url, u), timeout=32)
+                self.logger.debug(f'Attempting to fetch favicon from {u}.')
+                favicon_response = session.get(urljoin(rendered_url, u), timeout=5)
                 favicon_response.raise_for_status()
                 to_return.add(favicon_response.content)
+                self.logger.debug(f'Done with favicon from {u}.')
             except Exception as e:
-                self.logger.warning(f'Unable to fetch favicon from {u}: {e}')
+                self.logger.info(f'Unable to fetch favicon from {u}: {e}')
 
         return to_return
 
