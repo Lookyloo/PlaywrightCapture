@@ -815,7 +815,8 @@ class Capture():
                 name, _ = name.split(' at ', maxsplit=1)
             elif '; ' in name:
                 name, _ = name.split('; ', maxsplit=1)
-            exception.name = name.strip()
+            # This is kinda dirty.
+            exception._name = name.strip()
 
     def _exception_is_network_error(self, exception: Error) -> bool:
         if exception.name in [
