@@ -20,7 +20,7 @@ import requests
 
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
-from playwright.async_api import async_playwright, Frame, Error, Page
+from playwright.async_api import async_playwright, Frame, Error, Page, Download
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -429,7 +429,28 @@ class Capture():
                            rendered_hostname_only: bool=True,
                            with_favicon: bool=False
                            ) -> CaptureResponse:
+
         to_return: CaptureResponse = {}
+
+        self.wait_for_download = False
+
+        async def handle_download(download: Download) -> None:
+            # This method is called when a download event is triggered from JS in a page that also renders
+            try:
+                self.wait_for_download = True
+                self.logger.info('Got a download triggered from JS.')
+                tmp_f = NamedTemporaryFile(delete=False)
+                await download.save_as(tmp_f.name)
+                to_return["downloaded_filename"] = download.suggested_filename
+                with open(tmp_f.name, "rb") as f:
+                    to_return["downloaded_file"] = f.read()
+                os.unlink(tmp_f.name)
+                self.logger.info('Done with download.')
+            except Exception as e:
+                self.logger.warning(f'Unable to finish download triggered from JS: {e}')
+            finally:
+                self.wait_for_download = False
+
         if page is not None:
             capturing_sub = True
         else:
@@ -443,6 +464,7 @@ class Capture():
             try:
                 # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
                 await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
+                page.on("download", handle_download)
             except Error as initial_error:
                 self._update_exceptions(initial_error)
                 # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
@@ -545,6 +567,10 @@ class Capture():
 
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
                     to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
+
+                if self.wait_for_download:
+                    self.logger.info('Waiting for download to finish...')
+                    await self._safe_wait(page)
 
                 if depth > 0 and to_return.get('html') and to_return['html']:
                     if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
