@@ -438,14 +438,13 @@ class Capture():
             # This method is called when a download event is triggered from JS in a page that also renders
             try:
                 self.wait_for_download = True
-                self.logger.info('Got a download triggered from JS.')
-                tmp_f = NamedTemporaryFile(delete=False)
-                await download.save_as(tmp_f.name)
-                to_return["downloaded_filename"] = download.suggested_filename
-                with open(tmp_f.name, "rb") as f:
-                    to_return["downloaded_file"] = f.read()
-                os.unlink(tmp_f.name)
-                self.logger.info('Done with download.')
+                with NamedTemporaryFile() as tmp_f:
+                    self.logger.info('Got a download triggered from JS.')
+                    await download.save_as(tmp_f.name)
+                    to_return["downloaded_filename"] = download.suggested_filename
+                    with open(tmp_f.name, "rb") as f:
+                        to_return["downloaded_file"] = f.read()
+                    self.logger.info('Done with download.')
             except Exception as e:
                 self.logger.warning(f'Unable to finish download triggered from JS: {e}')
             finally:
