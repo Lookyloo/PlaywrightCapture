@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from playwright.async_api import async_playwright, Frame, Error, Page, Download
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from playwright_stealth import stealth_async  # type: ignore
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
@@ -455,6 +456,7 @@ class Capture():
         else:
             capturing_sub = False
             page = await self.context.new_page()
+            await stealth_async(page)
             page.set_default_timeout(self._capture_timeout * 1000)
         try:
             # Parse the URL. If there is a fragment, we need to scroll to it manually
