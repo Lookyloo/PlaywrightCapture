@@ -137,7 +137,7 @@ class Capture():
         launch_settings = {}
         if self.proxy:
             launch_settings['proxy'] = self.proxy
-        self.browser = await self.playwright[self.browser_name].launch(**launch_settings)
+        self.browser = await self.playwright[self.browser_name].launch(**launch_settings)  # type: ignore
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -425,7 +425,7 @@ class Capture():
         elif self.browser_name == 'chromium':
             await self.context.grant_permissions(chromium_permissions)
 
-    async def __cloudflare_bypass_attempt(self, page):
+    async def __cloudflare_bypass_attempt(self, page: Page) -> None:
         # This method aims to bypass cloudflare checks, but it mostly doesn't work.
         max_tries = 5
         try:
