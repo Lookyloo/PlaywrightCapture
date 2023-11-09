@@ -134,12 +134,10 @@ class Capture():
         elif self.browser_name not in self._browsers:
             raise UnknownPlaywrightBrowser(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
 
+        launch_settings = {}
         if self.proxy:
-            self.browser = await self.playwright[self.browser_name].launch(
-                proxy=self.proxy,
-            )
-        else:
-            self.browser = await self.playwright[self.browser_name].launch()
+            launch_settings['proxy'] = self.proxy
+        self.browser = await self.playwright[self.browser_name].launch(**launch_settings)
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -376,6 +374,9 @@ class Capture():
             # NOTE: Not supported, see https://github.com/microsoft/playwright-python/issues/1509
             default_context_settings.pop('is_mobile')
 
+        # FIXME: video for debug
+        # default_context_settings['record_video_dir'] = './videos/'
+
         self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
         self.context.set_default_timeout(self._capture_timeout * 1000)
 
@@ -423,6 +424,29 @@ class Capture():
             await self.context.grant_permissions(firefox_permissions)
         elif self.browser_name == 'chromium':
             await self.context.grant_permissions(chromium_permissions)
+
+    async def __cloudflare_bypass_attempt(self, page):
+        # This method aims to bypass cloudflare checks, but it mostly doesn't work.
+        max_tries = 5
+        try:
+            while max_tries > 0:
+                cf_locator = page.frame_locator("iframe[title=\"Widget containing a Cloudflare security challenge\"]").get_by_label("Verify you are human")
+                self.logger.info('Cloudflare widget visible.')
+                await cf_locator.click(force=True, position={"x": random.uniform(1, 32), "y": random.uniform(1, 32)})
+                await self._safe_wait(page)
+                await page.wait_for_timeout(2000)  # Wait 30 sec after network idle
+                spinner = page.locator('#challenge-spinner')
+                while True:
+                    if await spinner.is_visible():
+                        self.logger.info('Cloudflare spinner visible.')
+                        await page.wait_for_timeout(2000)
+                    else:
+                        self.logger.info('Cloudflare spinner not visible.')
+                        break
+                max_tries -= 1
+                await page.wait_for_timeout(5000)
+        except Exception as e:
+            self.logger.info(f'Unable to find Cloudflare locator: {e}')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: Optional[str]=None,
@@ -521,6 +545,8 @@ class Capture():
                     except Exception as e:
                         self.logger.exception(f'General error with captcha solving on {url}: {e}')
                 # ======
+                # NOTE: testing
+                # await self.__cloudflare_bypass_attempt(page)
 
                 # check if we have anything on the page. If we don't, the page is not working properly.
                 if await self._failsafe_get_content(page):
