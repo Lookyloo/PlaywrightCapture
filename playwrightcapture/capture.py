@@ -430,9 +430,11 @@ class Capture():
         max_tries = 5
         try:
             while max_tries > 0:
-                cf_locator = page.frame_locator("iframe[title=\"Widget containing a Cloudflare security challenge\"]").get_by_label("Verify you are human")
-                self.logger.info('Cloudflare widget visible.')
+                # cf_locator = page.frame_locator("iframe[title=\"Widget containing a Cloudflare security challenge\"]").get_by_label("Verify you are human")
+                cf_locator = page.frame_locator("iframe[title=\"Widget containing a Cloudflare security challenge\"]").get_by_role("checkbox")
+                await self._safe_wait(page)
                 await cf_locator.click(force=True, position={"x": random.uniform(1, 32), "y": random.uniform(1, 32)})
+                self.logger.info('Cloudflare widget visible.')
                 await self._safe_wait(page)
                 await page.wait_for_timeout(2000)  # Wait 30 sec after network idle
                 spinner = page.locator('#challenge-spinner')
