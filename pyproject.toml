@@ -20,7 +20,7 @@ classifiers=[
 [tool.poetry.dependencies]
 python = "^3.8"
 playwright = "^1.39.0"
-dateparser = "^1.1.8"
+dateparser = "^1.2.0"
 beautifulsoup4 = {version= "^4.12.2", extras = ["lxml"]}
 w3lib = "^2.1.2"
 requests = {extras = ["socks"], version = "^2.31.0"}
