@@ -630,10 +630,10 @@ class Capture():
                             except (TimeoutError, asyncio.exceptions.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                             except Exception as e:
-                                self.logger.warning(f'Error while capturing child "{url}": {e}. {total_urls - index - 1} more to go.')
+                                self.logger.warning(f'Error while capturing child "{url}": {e}. {len(child_urls) - index - 1} more to go.')
                             else:
                                 runtime = int(time.time() - start_time)
-                                self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {total_urls - index - 1} to go.')
+                                self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {len(child_urls) - index - 1} to go.')
                             try:
                                 await page.go_back()
                             except PlaywrightTimeoutError:
