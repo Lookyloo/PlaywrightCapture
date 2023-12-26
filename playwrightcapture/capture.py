@@ -11,9 +11,11 @@ import sys
 import time
 
 from base64 import b64decode
+from io import BytesIO
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, List, Union, Any, TypedDict, Literal, TYPE_CHECKING, Set, Tuple
 from urllib.parse import urlparse, unquote, urljoin
+from zipfile import ZipFile
 
 import dateparser
 import requests
@@ -459,23 +461,29 @@ class Capture():
 
         to_return: CaptureResponse = {}
 
-        self.wait_for_download = False
+        # We don't need to be super strict on the lock, as it simply triggers a wait for network idle before stoping the capture
+        # but we still need it to be an integer in case we have more than one download triggered and one finished when the others haven't
+        self.wait_for_download = 0
+
+        # We may have multiple download triggered via JS
+        multiple_downloads: List[Tuple[str, bytes]] = []
 
         async def handle_download(download: Download) -> None:
             # This method is called when a download event is triggered from JS in a page that also renders
             try:
-                self.wait_for_download = True
+                self.wait_for_download += 1
                 with NamedTemporaryFile() as tmp_f:
                     self.logger.info('Got a download triggered from JS.')
                     await download.save_as(tmp_f.name)
-                    to_return["downloaded_filename"] = download.suggested_filename
+                    filename = download.suggested_filename
                     with open(tmp_f.name, "rb") as f:
-                        to_return["downloaded_file"] = f.read()
+                        file_content = f.read()
+                    multiple_downloads.append((filename, file_content))
                     self.logger.info('Done with download.')
             except Exception as e:
                 self.logger.warning(f'Unable to finish download triggered from JS: {e}')
             finally:
-                self.wait_for_download = False
+                self.wait_for_download -= 1
 
         if page is not None:
             capturing_sub = True
@@ -504,13 +512,13 @@ class Capture():
                                 await page.goto(url, referer=referer if referer else '')
                             except Exception:
                                 pass
-                            tmp_f = NamedTemporaryFile(delete=False)
-                            download = await download_info.value
-                            await download.save_as(tmp_f.name)
-                            to_return["downloaded_filename"] = download.suggested_filename
-                            with open(tmp_f.name, "rb") as f:
-                                to_return["downloaded_file"] = f.read()
-                            os.unlink(tmp_f.name)
+                            with NamedTemporaryFile() as tmp_f:
+                                download = await download_info.value
+                                await download.save_as(tmp_f.name)
+                                filename = download.suggested_filename
+                                with open(tmp_f.name, "rb") as f:
+                                    file_content = f.read()
+                                multiple_downloads.append((filename, file_content))
                     except PlaywrightTimeoutError:
                         self.logger.debug('No download has been triggered.')
                         raise initial_error
@@ -597,9 +605,23 @@ class Capture():
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
                     to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
 
-                if self.wait_for_download:
+                if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
                     await self._safe_wait(page)
+
+                if multiple_downloads:
+                    if len(multiple_downloads) == 1:
+                        to_return["downloaded_filename"] = multiple_downloads[0][0]
+                        to_return["downloaded_file"] = multiple_downloads[0][1]
+                    else:
+                        # we have multiple downloads, making it a zip
+                        mem_zip = BytesIO()
+                        to_return["downloaded_filename"] = 'multiple_downloads.zip'
+                        with ZipFile(mem_zip, 'w') as z:
+                            for i, f_details in enumerate(multiple_downloads):
+                                filename, file_content = f_details
+                                z.writestr(f'{i}_{filename}', file_content)
+                        to_return["downloaded_file"] = mem_zip.getvalue()
 
                 if depth > 0 and to_return.get('html') and to_return['html']:
                     if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
