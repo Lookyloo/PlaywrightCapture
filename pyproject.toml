@@ -27,7 +27,7 @@ requests = {extras = ["socks"], version = "^2.31.0"}
 pydub = {version = "^0.25.1", optional = true}
 SpeechRecognition = {version = "^3.10.1", optional = true}
 pytz = {"version" = "^2023.3.post1", python = "<3.9"}
-tzdata = "^2023.3"
+tzdata = "^2023.4"
 playwright-stealth = "^1.0.6"
 setuptools = "^69.0.3"
 
@@ -38,34 +38,14 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-types-beautifulsoup4 = "^4.12.0.7"
-pytest = "^7.4.3"
+types-beautifulsoup4 = "^4.12.0.20240106"
+pytest = "^7.4.4"
 mypy = "^1.8.0"
-types-dateparser = "^1.1.4.10"
-types-requests = "^2.31.0.10"
+types-dateparser = "^1.1.4.20240106"
+types-requests = "^2.31.0.20240106"
 types-pytz = "^2023.3.1.1"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.mypy]
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_any_generics = true
-python_version = 3.8
-ignore_errors = false
-ignore_missing_imports = false
-strict_optional = true
-no_implicit_optional = true
-warn_return_any = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_unreachable = true
-
-show_error_context = true
-pretty = true

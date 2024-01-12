@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import asyncio
 import binascii
 import json
@@ -13,7 +15,7 @@ import time
 from base64 import b64decode
 from io import BytesIO
 from tempfile import NamedTemporaryFile
-from typing import Optional, Dict, List, Union, Any, TypedDict, Literal, TYPE_CHECKING, Set, Tuple
+from typing import Any, TypedDict, Literal, TYPE_CHECKING
 from urllib.parse import urlparse, unquote, urljoin
 from zipfile import ZipFile
 
@@ -54,32 +56,32 @@ except ImportError:
 class CaptureResponse(TypedDict, total=False):
 
     last_redirected_url: str
-    har: Optional[Dict[str, Any]]
-    cookies: Optional[List['Cookie']]
-    error: Optional[str]
-    error_name: Optional[str]
-    html: Optional[str]
-    png: Optional[bytes]
-    downloaded_filename: Optional[str]
-    downloaded_file: Optional[bytes]
-    children: Optional[List['CaptureResponse']]
+    har: dict[str, Any] | None
+    cookies: list[Cookie] | None
+    error: str | None
+    error_name: str | None
+    html: str | None
+    png: bytes | None
+    downloaded_filename: str | None
+    downloaded_file: bytes | None
+    children: list[CaptureResponse] | None
 
     # One day, playwright will support getting the favicon from the capture itself
     # favicon: Optional[bytes]
     # in the meantime, we need a workaround: https://github.com/Lookyloo/PlaywrightCapture/issues/45
-    potential_favicons: Optional[Set[bytes]]
+    potential_favicons: set[bytes] | None
 
 
 class Capture():
 
-    _browsers: List['BROWSER'] = ['chromium', 'firefox', 'webkit']
-    _default_viewport: 'ViewportSize' = {'width': 1920, 'height': 1080}
+    _browsers: list[BROWSER] = ['chromium', 'firefox', 'webkit']
+    _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
     _default_timeout: int = 90  # set to 90s by default
     _minimal_timeout: int = 15  # set to 15s - It makes little sense to attempt a capture below that limit.
 
-    def __init__(self, browser: Optional['BROWSER']=None, device_name: Optional[str]=None,
-                 proxy: Optional[Union[str, Dict[str, str]]]=None,
-                 general_timeout_in_sec: Optional[int] = None, loglevel: str='INFO'):
+    def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
+                 proxy: str | dict[str, str] | None=None,
+                 general_timeout_in_sec: int | None = None, loglevel: str='INFO'):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -100,8 +102,8 @@ class Capture():
                 self.logger.warning(f'Timeout given: {general_timeout_in_sec}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
                 self._capture_timeout = self._minimal_timeout
 
-        self.device_name: Optional[str] = device_name
-        self.proxy: 'ProxySettings' = {}
+        self.device_name: str | None = device_name
+        self.proxy: ProxySettings = {}
         if proxy:
             if isinstance(proxy, str):
                 self.proxy = {'server': proxy}
@@ -112,11 +114,11 @@ class Capture():
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 1
-        self._cookies: List['SetCookieParam'] = []
-        self._http_credentials: 'HttpCredentials' = {}
-        self._geolocation: 'Geolocation' = {}
-        self._headers: 'Headers' = {}
-        self._viewport: Optional['ViewportSize'] = None
+        self._cookies: list[SetCookieParam] = []
+        self._http_credentials: HttpCredentials = {}
+        self._geolocation: Geolocation = {}
+        self._headers: Headers = {}
+        self._viewport: ViewportSize | None = None
         self._user_agent: str = ''
         self._timezone_id: str = ''
         self._locale: str = ''
@@ -162,7 +164,7 @@ class Capture():
         return self._locale
 
     @locale.setter
-    def locale(self, locale: Optional[str]) -> None:
+    def locale(self, locale: str | None) -> None:
         if locale:
             self._locale = locale
 
@@ -171,7 +173,7 @@ class Capture():
         return self._timezone_id
 
     @timezone_id.setter
-    def timezone_id(self, timezone_id: Optional[str]) -> None:
+    def timezone_id(self, timezone_id: str | None) -> None:
         if not timezone_id:
             return
         if timezone_id in all_timezones_set:
@@ -180,11 +182,11 @@ class Capture():
             raise InvalidPlaywrightParameter(f'The Timezone ID provided ({timezone_id}) is invalid.')
 
     @property
-    def http_credentials(self) -> 'HttpCredentials':
+    def http_credentials(self) -> HttpCredentials:
         return self._http_credentials
 
     @http_credentials.setter
-    def http_credentials(self, credentials: Optional[Dict[str, str]]) -> None:
+    def http_credentials(self, credentials: dict[str, str] | None) -> None:
         if not credentials:
             return
         if 'username' in credentials and 'password' in credentials:
@@ -195,15 +197,15 @@ class Capture():
         else:
             raise InvalidPlaywrightParameter(f'At least a username and a password are required in the credentials: {credentials}')
 
-    def set_http_credentials(self, username: str, password: str, origin: Optional[str]=None) -> None:
+    def set_http_credentials(self, username: str, password: str, origin: str | None=None) -> None:
         self._http_credentials = {'username': username, 'password': password, 'origin': origin}
 
     @property
-    def geolocation(self) -> 'Geolocation':
+    def geolocation(self) -> Geolocation:
         return self._geolocation
 
     @geolocation.setter
-    def geolocation(self, geolocation: Optional[Dict[str, Union[str, int, float]]]) -> None:
+    def geolocation(self, geolocation: dict[str, str | int | float] | None) -> None:
         if not geolocation:
             return
         if 'latitude' in geolocation and 'longitude' in geolocation:
@@ -215,18 +217,18 @@ class Capture():
             raise InvalidPlaywrightParameter(f'At least a latitude and a longitude are required in the geolocation: {geolocation}')
 
     @property
-    def cookies(self) -> List['SetCookieParam']:
+    def cookies(self) -> list[SetCookieParam]:
         return self._cookies
 
     @cookies.setter
-    def cookies(self, cookies: Optional[List[Dict[str, Any]]]) -> None:
+    def cookies(self, cookies: list[dict[str, Any]] | None) -> None:
         '''Cookies to send along to the initial request.
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
         if not cookies:
             return
         for cookie in cookies:
-            c: 'SetCookieParam' = {
+            c: SetCookieParam = {
                 'name': cookie['name'],
                 'value': cookie['value'],
             }
@@ -266,15 +268,15 @@ class Capture():
                 self.logger.warning(f'The cookie must have a URL ({url}) or a domain ({domain}) and a path ({path})')
 
     @property
-    def headers(self) -> 'Headers':
+    def headers(self) -> Headers:
         return self._headers
 
     @headers.setter
-    def headers(self, headers: Optional[Union[str, Dict[str, str]]]) -> None:
+    def headers(self, headers: str | dict[str, str] | None) -> None:
         if not headers:
             return
         if isinstance(headers, str):
-            new_headers: Dict[str, str] = {}
+            new_headers: dict[str, str] = {}
             for header_line in headers.splitlines():
                 if header_line and ':' in header_line:
                     splitted = header_line.split(':', 1)
@@ -290,7 +292,7 @@ class Capture():
         else:
             # This shouldn't happen, but we also cannot ensure the calls leading to this are following the specs,
             # and playwright dislikes invalid HTTP headers so we rather drop them.
-            self.logger.info(f'Wrong type of headers ({type(headers)}): {headers}')  # type: ignore[unreachable]
+            self.logger.info(f'Wrong type of headers ({type(headers)}): {headers}')
             return
 
         # Validate the new headers, only a subset of characters are accepted
@@ -305,11 +307,11 @@ class Capture():
             self._headers[name] = value
 
     @property
-    def viewport(self) -> Optional['ViewportSize']:
+    def viewport(self) -> ViewportSize | None:
         return self._viewport
 
     @viewport.setter
-    def viewport(self, viewport: Optional[Dict[str, Union[str, int]]]) -> None:
+    def viewport(self, viewport: dict[str, str | int] | None) -> None:
         if not viewport:
             return
         if 'width' in viewport and 'height' in viewport:
@@ -322,7 +324,7 @@ class Capture():
         return self._user_agent
 
     @user_agent.setter
-    def user_agent(self, user_agent: Optional[str]) -> None:
+    def user_agent(self, user_agent: str | None) -> None:
         if user_agent is not None:
             self._user_agent = user_agent
 
@@ -331,7 +333,7 @@ class Capture():
         return self._color_scheme
 
     @color_scheme.setter
-    def color_scheme(self, color_scheme: Optional[str]) -> None:
+    def color_scheme(self, color_scheme: str | None) -> None:
         if not color_scheme:
             return
         schemes = ['light', 'dark', 'no-preference']
@@ -453,8 +455,8 @@ class Capture():
             self.logger.info(f'Unable to find Cloudflare locator: {e}')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
-                           referer: Optional[str]=None,
-                           page: Optional[Page]=None, depth: int=0,
+                           referer: str | None=None,
+                           page: Page | None=None, depth: int=0,
                            rendered_hostname_only: bool=True,
                            with_favicon: bool=False
                            ) -> CaptureResponse:
@@ -466,7 +468,7 @@ class Capture():
         self.wait_for_download = 0
 
         # We may have multiple download triggered via JS
-        multiple_downloads: List[Tuple[str, bytes]] = []
+        multiple_downloads: list[tuple[str, bytes]] = []
 
         async def handle_download(download: Download) -> None:
             # This method is called when a download event is triggered from JS in a page that also renders
@@ -752,7 +754,7 @@ class Capture():
             # Network never idle, keep going
             self.__network_not_idle += 1
 
-    async def _failsafe_get_content(self, page: Page) -> Optional[str]:
+    async def _failsafe_get_content(self, page: Page) -> str | None:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
         tries = 3
@@ -770,8 +772,8 @@ class Capture():
         self.logger.warning('Unable to get page content.')
         return None
 
-    def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> List[str]:
-        def _sanitize(maybe_url: str) -> Optional[str]:
+    def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> list[str]:
+        def _sanitize(maybe_url: str) -> str | None:
             href = strip_html5_whitespace(maybe_url)
             href = safe_url_string(href)
 
@@ -783,7 +785,7 @@ class Capture():
                 return None
             return href
 
-        urls: Set[str] = set()
+        urls: set[str] = set()
         soup = BeautifulSoup(rendered_html, "lxml")
 
         rendered_hostname = urlparse(rendered_url).hostname
@@ -924,9 +926,9 @@ class Capture():
             return True
         return False
 
-    def make_frame_tree(self, frame: Frame) -> Dict[str, List[Dict[str, Any]]]:
+    def make_frame_tree(self, frame: Frame) -> dict[str, list[dict[str, Any]]]:
         # TODO: not used at this time, need to figure out how do use that.
-        to_return: Dict[str, List[Dict[str, Any]]] = {frame._impl_obj._guid: []}
+        to_return: dict[str, list[dict[str, Any]]] = {frame._impl_obj._guid: []}
         for child in frame.child_frames:
             to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
         return to_return
@@ -934,7 +936,7 @@ class Capture():
     # #### Manual favicon extractor, will be removed if/when Playwright supports getting the favicon.
 
     # Method copied from HAR2Tree
-    def __parse_data_uri(self, uri: str) -> Optional[Tuple[str, str, bytes]]:
+    def __parse_data_uri(self, uri: str) -> tuple[str, str, bytes] | None:
         if not uri.startswith('data:'):
             return None
         uri = uri[5:]
@@ -973,7 +975,7 @@ class Capture():
             mimeparams = ''
         return mime, mimeparams, data
 
-    def __extract_favicons(self, rendered_content: Union[str, bytes]) -> Optional[Tuple[Set[str], Set[bytes]]]:
+    def __extract_favicons(self, rendered_content: str | bytes) -> tuple[set[str], set[bytes]] | None:
         if isinstance(rendered_content, bytes):
             rendered_content = str(from_bytes(rendered_content).best())
             if not rendered_content:
@@ -1018,7 +1020,7 @@ class Capture():
         # print(favicons_urls)
         return favicons_urls, favicons
 
-    def get_favicons(self, rendered_url: str, rendered_content: str) -> Set[bytes]:
+    def get_favicons(self, rendered_url: str, rendered_content: str) -> set[bytes]:
         """This method will be deprecated as soon as Playwright will be able to fetch favicons (https://github.com/microsoft/playwright/issues/7493).
         In the meantime, we try to get all the potential ones in this method.
         Method inspired by https://github.com/ail-project/ail-framework/blob/master/bin/lib/crawlers.py

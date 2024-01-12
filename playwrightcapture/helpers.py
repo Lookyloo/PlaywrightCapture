@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 from collections import defaultdict
-from typing import TypedDict, Dict
+from typing import TypedDict
 
 from playwright.sync_api import sync_playwright
 
@@ -11,17 +13,17 @@ from .exceptions import UnknownPlaywrightDeviceType
 class PlaywrightDevice(TypedDict):
 
     user_agent: str
-    viewport: Dict[str, int]
+    viewport: dict[str, int]
     device_scale_factor: int
     is_mobile: bool
     has_touch: bool
     default_browser_type: str
 
 
-def get_devices(in_testsuite: bool=False) -> Dict[str, Dict[str, Dict[str, PlaywrightDevice]]]:
-    to_return: Dict[str, Dict[str, Dict[str, PlaywrightDevice]]] = {'desktop': defaultdict(dict), 'mobile': defaultdict(dict)}
+def get_devices(in_testsuite: bool=False) -> dict[str, dict[str, dict[str, PlaywrightDevice]]]:
+    to_return: dict[str, dict[str, dict[str, PlaywrightDevice]]] = {'desktop': defaultdict(dict), 'mobile': defaultdict(dict)}
     playwright = sync_playwright().start()
-    devices: Dict[str, PlaywrightDevice] = playwright.devices
+    devices: dict[str, PlaywrightDevice] = playwright.devices
     playwright.stop()
     for device_name, settings in devices.items():
         splitted_name = device_name.split(' ')
