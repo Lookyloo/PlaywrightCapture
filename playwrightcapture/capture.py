@@ -26,7 +26,7 @@ from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from playwright.async_api import async_playwright, Frame, Error, Page, Download
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_async  # type: ignore
+from playwright_stealth import stealth_async  # type: ignore[import]
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
@@ -46,8 +46,8 @@ if TYPE_CHECKING:
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
-    import pydub  # type: ignore
-    from speech_recognition import Recognizer, AudioFile  # type: ignore
+    import pydub  # type: ignore[import]
+    from speech_recognition import Recognizer, AudioFile  # type: ignore[import]
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
@@ -122,9 +122,9 @@ class Capture():
         self._user_agent: str = ''
         self._timezone_id: str = ''
         self._locale: str = ''
-        self._color_scheme: str = ''
+        self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
 
-    async def __aenter__(self) -> 'Capture':
+    async def __aenter__(self) -> Capture:
         '''Launch the browser'''
         self._temp_harfile = NamedTemporaryFile(delete=False)
 
@@ -138,10 +138,9 @@ class Capture():
         elif self.browser_name not in self._browsers:
             raise UnknownPlaywrightBrowser(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
 
-        launch_settings = {}
-        if self.proxy:
-            launch_settings['proxy'] = self.proxy
-        self.browser = await self.playwright[self.browser_name].launch(**launch_settings)  # type: ignore
+        self.browser = await self.playwright[self.browser_name].launch(
+            proxy=self.proxy if self.proxy else None
+        )
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -329,59 +328,37 @@ class Capture():
             self._user_agent = user_agent
 
     @property
-    def color_scheme(self) -> str:
+    def color_scheme(self) -> Literal['dark', 'light', 'no-preference', 'null'] | None:
         return self._color_scheme
 
     @color_scheme.setter
-    def color_scheme(self, color_scheme: str | None) -> None:
+    def color_scheme(self, color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None) -> None:
         if not color_scheme:
             return
-        schemes = ['light', 'dark', 'no-preference']
-        if color_scheme in ['light', 'dark', 'no-preference']:
+        schemes = ['light', 'dark', 'no-preference', 'null']
+        if color_scheme in schemes:
             self._color_scheme = color_scheme
         else:
             raise InvalidPlaywrightParameter(f'Invalid color scheme ({color_scheme}), must be in {", ".join(schemes)}.')
 
     async def initialize_context(self) -> None:
-        default_context_settings = {
-            'record_har_path': self._temp_harfile.name,
-            'ignore_https_errors': True
-        }
-
+        device_context_settings = {}
         if self.device_name:
-            default_context_settings.update(self.playwright.devices[self.device_name])
+            device_context_settings = self.playwright.devices[self.device_name]
 
-        if self.http_credentials:
-            default_context_settings['http_credentials'] = self.http_credentials
-
-        if self.user_agent:
-            # User defined UA, can overwrite device UA
-            default_context_settings['user_agent'] = self.user_agent
-
-        if self.locale:
-            default_context_settings['locale'] = self.locale
-
-        if self.timezone_id:
-            default_context_settings['timezone_id'] = self.timezone_id
-
-        if self.color_scheme:
-            default_context_settings['color_scheme'] = self.color_scheme
-
-        if self.viewport:
-            # User defined viewport, can overwrite device viewport
-            default_context_settings['viewport'] = self.viewport
-        elif 'viewport' not in default_context_settings:
-            # No viewport given, fallback to default
-            default_context_settings['viewport'] = self._default_viewport
-
-        if self.browser_name == 'firefox' and default_context_settings.get('is_mobile'):
-            # NOTE: Not supported, see https://github.com/microsoft/playwright-python/issues/1509
-            default_context_settings.pop('is_mobile')
-
-        # FIXME: video for debug
-        # default_context_settings['record_video_dir'] = './videos/'
-
-        self.context = await self.browser.new_context(**default_context_settings)  # type: ignore
+        self.context = await self.browser.new_context(
+            record_har_path=self._temp_harfile.name,
+            ignore_https_errors=True,
+            http_credentials=self.http_credentials if self.http_credentials else None,
+            user_agent=self.user_agent if self.user_agent else device_context_settings.pop('user_agent', None),
+            locale=self.locale if self.locale else None,
+            timezone_id=self.timezone_id if self.timezone_id else None,
+            color_scheme=self.color_scheme if self.color_scheme else None,
+            viewport=self.viewport if self.viewport else device_context_settings.pop('viewport', self._default_viewport),
+            # For debug only
+            # record_video_dir='./videos/',
+            **device_context_settings
+        )
         self.context.set_default_timeout(self._capture_timeout * 1000)
 
         if self.cookies:
@@ -650,7 +627,7 @@ class Capture():
                                                       rendered_hostname_only=rendered_hostname_only,
                                                       max_depth_capture_time=max_capture_time),
                                     timeout=max_capture_time + 1)  # just adding a bit of padding so playwright has the chance to raise the exception first
-                                to_return['children'].append(child_capture)  # type: ignore
+                                to_return['children'].append(child_capture)  # type: ignore[union-attr]
                             except (TimeoutError, asyncio.exceptions.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                             except Exception as e:
