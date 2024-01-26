@@ -26,7 +26,7 @@ from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from playwright.async_api import async_playwright, Frame, Error, Page, Download
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_async  # type: ignore[import]
+from playwright_stealth import stealth_async  # type: ignore[import-untyped]
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
@@ -46,8 +46,8 @@ if TYPE_CHECKING:
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
-    import pydub  # type: ignore[import]
-    from speech_recognition import Recognizer, AudioFile  # type: ignore[import]
+    import pydub  # type: ignore[import-untyped]
+    from speech_recognition import Recognizer, AudioFile  # type: ignore[import-untyped]
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
