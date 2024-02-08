@@ -141,6 +141,10 @@ class Capture():
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None
         )
+
+        # Set of URLs that were captured in that context
+        self._already_captured: set[str] = set()
+
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -601,7 +605,7 @@ class Capture():
                                 filename, file_content = f_details
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
-
+                self._already_captured.add(url)
                 if depth > 0 and to_return.get('html') and to_return['html']:
                     if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
                         to_return['children'] = []
@@ -780,8 +784,7 @@ class Capture():
             except ValueError as e:
                 # unable to sanitize
                 self.logger.warning(f'Unable to sanitize link: "{href}" - {e}')
-
-        return sorted(urls)
+        return sorted(urls - self._already_captured)
 
     async def _recaptcha_solver(self, page: Page) -> bool:
         try:
