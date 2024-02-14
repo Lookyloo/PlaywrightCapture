@@ -1024,8 +1024,10 @@ class Capture():
                 favicon_response.raise_for_status()
                 to_return.add(favicon_response.content)
                 self.logger.debug(f'Done with favicon from {u}.')
+            except requests.HTTPError as e:
+                self.logger.debug(f'Unable to fetch favicon from {u}: {e}')
             except Exception as e:
-                self.logger.info(f'Unable to fetch favicon from {u}: {e}')
+                self.logger.info(f'Unexpectedly unable to fetch favicon from {u}: {e}')
 
         return to_return
 
