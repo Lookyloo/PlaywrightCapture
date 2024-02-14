@@ -1011,6 +1011,7 @@ class Capture():
         to_fetch, to_return = extracted_favicons
         to_fetch.add('/favicon.ico')
         session = requests.session()
+        session.verify = False
         session.headers['user-agent'] = self.user_agent
         if self.proxy and self.proxy.get('server'):
             proxies = {'http': self.proxy['server'],
