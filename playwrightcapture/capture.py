@@ -657,7 +657,7 @@ class Capture():
             # NOTE: e.name is generally (always?) "Error"
             if self._exception_is_network_error(e):
                 # Expected errors
-                self.logger.info(f'Unable to process {url}: {e.message}')
+                self.logger.info(f'Unable to process {url}: {e.name}')
                 if e.name == 'net::ERR_CONNECTION_RESET':
                     self.should_retry = True
             elif e.name in ['NS_BINDING_CANCELLED_OLD_LOAD',
