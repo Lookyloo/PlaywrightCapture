@@ -21,6 +21,7 @@ from zipfile import ZipFile
 
 import dateparser
 import requests
+import urllib3
 
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
@@ -52,6 +53,9 @@ try:
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
+
+# Do not show TLS warnings from urllib3 when fetching a favicon
+urllib3.disable_warnings()
 
 
 class CaptureResponse(TypedDict, total=False):
