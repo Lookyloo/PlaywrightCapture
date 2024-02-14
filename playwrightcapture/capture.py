@@ -24,6 +24,7 @@ import requests
 
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
+from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import stealth_async  # type: ignore[import-untyped]
@@ -644,10 +645,13 @@ class Capture():
                             except PlaywrightTimeoutError:
                                 self.logger.info('Go back timed out, it is probably not a big deal.')
                             except Exception as e:
-                                self.logger.warning(f'Unable to go back: {e}.')
+                                self.logger.info(f'Unable to go back: {e}.')
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
+            self.should_retry = True
+        except TargetClosedError as e:
+            to_return['error'] = f"The target was closed - {e}"
             self.should_retry = True
         except Error as e:
             self._update_exceptions(e)
