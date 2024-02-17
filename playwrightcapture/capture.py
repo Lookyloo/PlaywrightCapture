@@ -683,6 +683,10 @@ class Capture():
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
+            elif e.name in ['Target page, context or browser has been closed']:
+                # The browser barfed, let's try again
+                self.logger.info(f'Browser barfed on {url} (retrying): {e.message}')
+                self.should_retry = True
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: {e.message}')
