@@ -26,7 +26,7 @@ import urllib3
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
-from playwright.async_api import async_playwright, Frame, Error, Page, Download
+from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import stealth_async  # type: ignore[import-untyped]
 from w3lib.html import strip_html5_whitespace
@@ -83,6 +83,8 @@ class Capture():
     _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
     _default_timeout: int = 90  # set to 90s by default
     _minimal_timeout: int = 15  # set to 15s - It makes little sense to attempt a capture below that limit.
+
+    _requests: dict[str, Request] = {}
 
     def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
                  proxy: str | dict[str, str] | None=None,
@@ -473,6 +475,14 @@ class Capture():
             finally:
                 self.wait_for_download -= 1
 
+        async def store_request(request: Request) -> None:
+            # This method is called on each request, to store the URL in a dict indexed by URL to get it back from the favicon fetcher
+            try:
+                self.logger.debug(f'Storing request: {request.url}')
+                self._requests[request.url] = request
+            except Exception as e:
+                self.logger.warning(f'Unable to store request: {e}')
+
         if page is not None:
             capturing_sub = True
         else:
@@ -480,6 +490,8 @@ class Capture():
             page = await self.context.new_page()
             await stealth_async(page)
             page.set_default_timeout(self._capture_timeout * 1000)
+            # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
+            page.on("request", store_request)
         try:
             # Parse the URL. If there is a fragment, we need to scroll to it manually
             parsed_url = urlparse(url, allow_fragments=True)
@@ -538,6 +550,8 @@ class Capture():
                             await self._recaptcha_solver(page)
                     except PlaywrightTimeoutError as e:
                         self.logger.info(f'Captcha on {url} is not ready: {e}')
+                    except TargetClosedError as e:
+                        self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
                     except Error as e:
                         self.logger.warning(f'Error while resolving captcha on {url}: {e}')
                     except Exception as e:
@@ -561,6 +575,8 @@ class Capture():
                             await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                         except PlaywrightTimeoutError as e:
                             self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
+                        except TargetClosedError as e:
+                            self.logger.warning(f'Target closed, unable to go to fragment "{fragment}": {e}')
                         except Error as e:
                             self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
                     else:
@@ -591,7 +607,7 @@ class Capture():
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
+                    to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
 
                 if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
@@ -1008,11 +1024,9 @@ class Capture():
                         favicons_urls.add(icon_url)
             else:
                 self.logger.info(f'Not processing {tag}')
-
-        # print(favicons_urls)
         return favicons_urls, favicons
 
-    def get_favicons(self, rendered_url: str, rendered_content: str) -> set[bytes]:
+    async def get_favicons(self, rendered_url: str, rendered_content: str) -> set[bytes]:
         """This method will be deprecated as soon as Playwright will be able to fetch favicons (https://github.com/microsoft/playwright/issues/7493).
         In the meantime, we try to get all the potential ones in this method.
         Method inspired by https://github.com/ail-project/ail-framework/blob/master/bin/lib/crawlers.py
@@ -1032,9 +1046,16 @@ class Capture():
         for u in to_fetch:
             try:
                 self.logger.debug(f'Attempting to fetch favicon from {u}.')
-                favicon_response = session.get(urljoin(rendered_url, u), timeout=5)
-                favicon_response.raise_for_status()
-                to_return.add(favicon_response.content)
+                url_to_fetch = urljoin(rendered_url, u)
+                if url_to_fetch in self._requests:
+                    # We already fetched this one
+                    if response := await self._requests[url_to_fetch].response():
+                        # We got a response
+                        to_return.add(await response.body())
+                else:
+                    favicon_response = session.get(url_to_fetch, timeout=5)
+                    favicon_response.raise_for_status()
+                    to_return.add(favicon_response.content)
                 self.logger.debug(f'Done with favicon from {u}.')
             except requests.HTTPError as e:
                 self.logger.debug(f'Unable to fetch favicon from {u}: {e}')
