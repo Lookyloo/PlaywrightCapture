@@ -20,6 +20,7 @@ from urllib.parse import urlparse, unquote, urljoin
 from zipfile import ZipFile
 
 import dateparser
+import magic
 import requests
 import urllib3
 
@@ -1047,21 +1048,28 @@ class Capture():
             try:
                 self.logger.debug(f'Attempting to fetch favicon from {u}.')
                 url_to_fetch = urljoin(rendered_url, u)
+                favicon = b''
                 if url_to_fetch in self._requests:
                     # We already fetched this one
                     if response := await self._requests[url_to_fetch].response():
                         # We got a response
-                        to_return.add(await response.body())
-                else:
+                        favicon = await response.body()
+                if not favicon:
                     favicon_response = session.get(url_to_fetch, timeout=5)
                     favicon_response.raise_for_status()
-                    to_return.add(favicon_response.content)
+                    favicon = favicon_response.content
+                if favicon:
+                    f = magic.Magic(mime=True)
+                    mimetype = f.from_buffer(favicon)
+                    if mimetype.startswith('image'):
+                        to_return.add(favicon)
+                    else:
+                        self.logger.warning(f'Unexpected mimetype for favicon from {u}: {mimetype}')
                 self.logger.debug(f'Done with favicon from {u}.')
             except requests.HTTPError as e:
                 self.logger.debug(f'Unable to fetch favicon from {u}: {e}')
             except Exception as e:
                 self.logger.info(f'Unexpectedly unable to fetch favicon from {u}: {e}')
-
         return to_return
 
     # END FAVICON EXTRACTOR
