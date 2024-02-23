@@ -85,7 +85,7 @@ class Capture():
     _default_timeout: int = 90  # set to 90s by default
     _minimal_timeout: int = 15  # set to 15s - It makes little sense to attempt a capture below that limit.
 
-    _requests: dict[str, Request] = {}
+    _requests: dict[str, bytes] = {}
 
     def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
                  proxy: str | dict[str, str] | None=None,
@@ -480,7 +480,8 @@ class Capture():
             # This method is called on each request, to store the URL in a dict indexed by URL to get it back from the favicon fetcher
             try:
                 self.logger.debug(f'Storing request: {request.url}')
-                self._requests[request.url] = request
+                if response := await request.response():
+                    self._requests[request.url] = await response.body()
             except Exception as e:
                 self.logger.warning(f'Unable to store request: {e}')
 
@@ -608,7 +609,7 @@ class Capture():
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
+                    to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
 
                 if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
@@ -1027,7 +1028,7 @@ class Capture():
                 self.logger.info(f'Not processing {tag}')
         return favicons_urls, favicons
 
-    async def get_favicons(self, rendered_url: str, rendered_content: str) -> set[bytes]:
+    def get_favicons(self, rendered_url: str, rendered_content: str) -> set[bytes]:
         """This method will be deprecated as soon as Playwright will be able to fetch favicons (https://github.com/microsoft/playwright/issues/7493).
         In the meantime, we try to get all the potential ones in this method.
         Method inspired by https://github.com/ail-project/ail-framework/blob/master/bin/lib/crawlers.py
@@ -1050,10 +1051,7 @@ class Capture():
                 url_to_fetch = urljoin(rendered_url, u)
                 favicon = b''
                 if url_to_fetch in self._requests:
-                    # We already fetched this one
-                    if response := await self._requests[url_to_fetch].response():
-                        # We got a response
-                        favicon = await response.body()
+                    favicon = self._requests[url_to_fetch]
                 if not favicon:
                     favicon_response = session.get(url_to_fetch, timeout=5)
                     favicon_response.raise_for_status()
