@@ -132,6 +132,8 @@ class Capture():
         self._locale: str = ''
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
 
+        self.magic = magic.Magic(mime=True)
+
     async def __aenter__(self) -> Capture:
         '''Launch the browser'''
         self._temp_harfile = NamedTemporaryFile(delete=False)
@@ -481,7 +483,11 @@ class Capture():
             try:
                 self.logger.debug(f'Storing request: {request.url}')
                 if response := await request.response():
-                    self._requests[request.url] = await response.body()
+                    if response.ok:
+                        body = await response.body()
+                        mimetype = self.magic.from_buffer(body)
+                        if mimetype.startswith('image'):
+                            self._requests[request.url] = body
             except Exception as e:
                 self.logger.warning(f'Unable to store request: {e}')
 
@@ -1057,8 +1063,7 @@ class Capture():
                     favicon_response.raise_for_status()
                     favicon = favicon_response.content
                 if favicon:
-                    f = magic.Magic(mime=True)
-                    mimetype = f.from_buffer(favicon)
+                    mimetype = self.magic.from_buffer(favicon)
                     if mimetype.startswith('image'):
                         to_return.add(favicon)
                     else:
