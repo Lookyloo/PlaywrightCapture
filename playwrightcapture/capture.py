@@ -20,9 +20,9 @@ from urllib.parse import urlparse, unquote, urljoin
 from zipfile import ZipFile
 
 import dateparser
-import magic
 import requests
 import urllib3
+
 
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
@@ -30,6 +30,7 @@ from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import stealth_async  # type: ignore[import-untyped]
+from puremagic import PureError, from_string  # type: ignore[import-untyped]
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
@@ -131,8 +132,6 @@ class Capture():
         self._timezone_id: str = ''
         self._locale: str = ''
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
-
-        self.magic = magic.Magic(mime=True)
 
     async def __aenter__(self) -> Capture:
         '''Launch the browser'''
@@ -479,15 +478,25 @@ class Capture():
                 self.wait_for_download -= 1
 
         async def store_request(request: Request) -> None:
-            # This method is called on each request, to store the URL in a dict indexed by URL to get it back from the favicon fetcher
+            # This method is called on each request, to store the body (if it is an image) in a dict indexed by URL
             try:
                 self.logger.debug(f'Storing request: {request.url}')
                 if response := await request.response():
                     if response.ok:
-                        body = await response.body()
-                        mimetype = self.magic.from_buffer(body)
-                        if mimetype.startswith('image'):
-                            self._requests[request.url] = body
+                        try:
+                            body = await response.body()
+                        except Exception as e:
+                            self.logger.debug(f'Unable to get body for {request.url}: {e}')
+                        else:
+                            try:
+                                if body:
+                                    mimetype = from_string(body, mime=True)
+                            except PureError:
+                                # unable to identify the mimetype
+                                self.logger.debug(f'Unable to identify the mimetype for {request.url}')
+                            else:
+                                if mimetype.startswith('image'):
+                                    self._requests[request.url] = body
             except Exception as e:
                 self.logger.warning(f'Unable to store request: {e}')
 
@@ -1063,11 +1072,16 @@ class Capture():
                     favicon_response.raise_for_status()
                     favicon = favicon_response.content
                 if favicon:
-                    mimetype = self.magic.from_buffer(favicon)
-                    if mimetype.startswith('image'):
-                        to_return.add(favicon)
+                    try:
+                        mimetype = from_string(favicon, mime=True)
+                    except PureError:
+                        # unable to identify the mimetype
+                        self.logger.debug(f'Unable to identify the mimetype for favicon from {u}')
                     else:
-                        self.logger.warning(f'Unexpected mimetype for favicon from {u}: {mimetype}')
+                        if mimetype.startswith('image'):
+                            to_return.add(favicon)
+                        else:
+                            self.logger.warning(f'Unexpected mimetype for favicon from {u}: {mimetype}')
                 self.logger.debug(f'Done with favicon from {u}.')
             except requests.HTTPError as e:
                 self.logger.debug(f'Unable to fetch favicon from {u}: {e}')
