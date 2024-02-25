@@ -484,19 +484,16 @@ class Capture():
                 if response := await request.response():
                     if response.ok:
                         try:
-                            body = await response.body()
+                            if body := await response.body():
+                                try:
+                                    mimetype = from_string(body, mime=True)
+                                    if mimetype.startswith('image'):
+                                        self._requests[request.url] = body
+                                except PureError:
+                                    # unable to identify the mimetype
+                                    self.logger.debug(f'Unable to identify the mimetype for {request.url}')
                         except Exception as e:
                             self.logger.debug(f'Unable to get body for {request.url}: {e}')
-                        else:
-                            try:
-                                if body:
-                                    mimetype = from_string(body, mime=True)
-                            except PureError:
-                                # unable to identify the mimetype
-                                self.logger.debug(f'Unable to identify the mimetype for {request.url}')
-                            else:
-                                if mimetype.startswith('image'):
-                                    self._requests[request.url] = body
             except Exception as e:
                 self.logger.warning(f'Unable to store request: {e}')
 
