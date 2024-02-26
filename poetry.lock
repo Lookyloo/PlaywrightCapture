@@ -518,13 +518,13 @@ testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
 name = "puremagic"
-version = "1.20"
+version = "1.21"
 description = "Pure python implementation of magic file detection"
 optional = false
 python-versions = "*"
 files = [
-    {file = "puremagic-1.20-py3-none-any.whl", hash = "sha256:14817470dc1e3339356088b58576820efd12544a676c20d7d5e738ea1e06f852"},
-    {file = "puremagic-1.20.tar.gz", hash = "sha256:c55c57369bd957bfe3af4765a66784eaaae77d697a6f12477174280e0abcbd07"},
+    {file = "puremagic-1.21-py3-none-any.whl", hash = "sha256:8fe85c05800fe1eacdd5aa943b9e7fdbee66bc41a17aacf80efd6c668c63df45"},
+    {file = "puremagic-1.21.tar.gz", hash = "sha256:31ef09b37a6ad2f7f2b09b5bd6b8c4a07187a01af4025f5f1368889bdfc6d779"},
 ]
 
 [[package]]
