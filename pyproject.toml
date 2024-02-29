@@ -39,7 +39,7 @@ recaptcha = ["requests", "pydub", "SpeechRecognition"]
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-types-beautifulsoup4 = "^4.12.0.20240106"
+types-beautifulsoup4 = "^4.12.0.20240229"
 pytest = "^8.0.2"
 mypy = "^1.8.0"
 types-dateparser = "^1.1.4.20240106"

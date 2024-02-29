@@ -430,17 +430,17 @@ class Capture():
                 await cf_locator.click(force=True, position={"x": random.uniform(1, 32), "y": random.uniform(1, 32)})
                 self.logger.info('Cloudflare widget visible.')
                 await self._safe_wait(page)
-                await page.wait_for_timeout(2000)  # Wait 30 sec after network idle
+                await self._wait_for_random_timeout(page, 2)
                 spinner = page.locator('#challenge-spinner')
                 while True:
                     if await spinner.is_visible():
                         self.logger.info('Cloudflare spinner visible.')
-                        await page.wait_for_timeout(2000)
+                        await self._wait_for_random_timeout(page, 2)
                     else:
                         self.logger.info('Cloudflare spinner not visible.')
                         break
                 max_tries -= 1
-                await page.wait_for_timeout(5000)
+                await self._wait_for_random_timeout(page, 5)
         except Exception as e:
             self.logger.info(f'Unable to find Cloudflare locator: {e}')
 
@@ -552,7 +552,7 @@ class Capture():
                 await page.bring_to_front()
 
                 # page instrumentation
-                await page.wait_for_timeout(5000)  # Wait 5 sec after document loaded
+                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
 
                 # ==== recaptcha
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
@@ -610,7 +610,7 @@ class Capture():
                         self.logger.debug(f'Unable to use keyboard: {e}')
 
                 await self._safe_wait(page)
-                await page.wait_for_timeout(5000)  # Wait 5 sec after network idle
+                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after network idle
                 await self._safe_wait(page)
 
                 if content := await self._failsafe_get_content(page):
@@ -787,7 +787,7 @@ class Capture():
             except Error:
                 self.logger.debug('Unable to get page content, trying again.')
                 tries -= 1
-                await page.wait_for_timeout(1000)
+                await self._wait_for_random_timeout(page, 1)
                 await self._safe_wait(page)
             except Exception as e:
                 self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
@@ -851,7 +851,7 @@ class Capture():
             self.logger.info(f'Checkbox never ready: {e}')
             return False
 
-        await page.wait_for_timeout(random.randint(3, 6) * 1000)
+        await self._wait_for_random_timeout(page, random.randint(3, 6))
         try:
             if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").first.is_checked(timeout=5000):  # solved already
                 return True
@@ -899,7 +899,7 @@ class Capture():
             await main_frame.get_by_role("textbox", name="Enter what you hear").fill(text)
             await main_frame.get_by_role("button", name="Verify").click()
             await self._safe_wait(page)
-            await page.wait_for_timeout(random.randint(3, 6) * 1000)
+            await self._wait_for_random_timeout(page, random.randint(3, 6))
             try:
                 if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").first.is_checked(timeout=5000):
                     self.logger.info('Captcha solved successfully')
@@ -947,6 +947,14 @@ class Capture():
         ]:
             return True
         return False
+
+    async def _wait_for_random_timeout(self, page: Page, timeout: int) -> None:
+        '''Instead of waiting for the exact same time, we wait +-500ms around the given time. The time is fiven in seconds for simplicity's sake.'''
+        if timeout > 1000:
+            self.logger.warning(f'The waiting time is too long {timeout}, we expect seconds, not miliseconds.')
+            timeout = int(timeout / 1000)
+        _wait_time = random.randrange(timeout * 1000 - 500, timeout * 1000 + 500)
+        await page.wait_for_timeout(_wait_time)
 
     def make_frame_tree(self, frame: Frame) -> dict[str, list[dict[str, Any]]]:
         # TODO: not used at this time, need to figure out how do use that.
