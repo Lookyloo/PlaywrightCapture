@@ -90,7 +90,7 @@ class Capture():
 
     def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
                  proxy: str | dict[str, str] | None=None,
-                 general_timeout_in_sec: int | None = None, loglevel: str='INFO'):
+                 general_timeout_in_sec: int | None = None, loglevel: str | int='INFO'):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -480,7 +480,6 @@ class Capture():
         async def store_request(request: Request) -> None:
             # This method is called on each request, to store the body (if it is an image) in a dict indexed by URL
             try:
-                self.logger.debug(f'Storing request: {request.url}')
                 if response := await request.response():
                     if response.ok:
                         try:
@@ -491,9 +490,9 @@ class Capture():
                                         self._requests[request.url] = body
                                 except PureError:
                                     # unable to identify the mimetype
-                                    self.logger.debug(f'Unable to identify the mimetype for {request.url}')
-                        except Exception as e:
-                            self.logger.debug(f'Unable to get body for {request.url}: {e}')
+                                    pass
+                        except Exception:
+                            pass
             except Exception as e:
                 self.logger.warning(f'Unable to store request: {e}')
 
@@ -550,9 +549,11 @@ class Capture():
                     raise initial_error
             else:
                 await page.bring_to_front()
+                self.logger.debug('Page moved to front.')
 
                 # page instrumentation
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
+                self.logger.debug('Start instrumentation.')
 
                 # ==== recaptcha
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
@@ -573,12 +574,16 @@ class Capture():
                 # ======
                 # NOTE: testing
                 # await self.__cloudflare_bypass_attempt(page)
+                self.logger.debug('Done with captcha.')
 
                 # check if we have anything on the page. If we don't, the page is not working properly.
                 if await self._failsafe_get_content(page):
+                    self.logger.debug('Got rendered content')
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
+                    self.logger.debug('Moved mouse.')
                     await self._safe_wait(page)
+                    self.logger.debug('Keep going after moving mouse.')
 
                     if parsed_url.fragment:
                         # We got a fragment, make sure we go to it and scroll only a little bit.
@@ -587,6 +592,7 @@ class Capture():
                             await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=5000)
                             await self._safe_wait(page)
                             await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
+                            self.logger.debug('Jumped to fragment.')
                         except PlaywrightTimeoutError as e:
                             self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
                         except TargetClosedError as e:
@@ -598,20 +604,27 @@ class Capture():
                         try:
                             # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
                             await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
+                            self.logger.debug('Scrolled down.')
                         except Error as e:
                             self.logger.debug(f'Unable to scroll: {e}')
 
                     await self._safe_wait(page)
+                    self.logger.debug('Keep going after moving on page.')
+
                     try:
                         await page.keyboard.press('PageUp')
+                        self.logger.debug('PageUp on keyboard')
                         await self._safe_wait(page)
                         await page.keyboard.press('PageDown')
+                        self.logger.debug('PageDown on keyboard')
                     except Error as e:
                         self.logger.debug(f'Unable to use keyboard: {e}')
 
+                self.logger.debug('Done with instrumentation, waiting for network idle.')
                 await self._safe_wait(page)
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after network idle
                 await self._safe_wait(page)
+                self.logger.debug('Done with instrumentation, done with waiting.')
 
                 if content := await self._failsafe_get_content(page):
                     to_return['html'] = content
