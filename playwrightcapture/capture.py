@@ -444,11 +444,83 @@ class Capture():
         except Exception as e:
             self.logger.info(f'Unable to find Cloudflare locator: {e}')
 
+    async def __dialog_didomi_clickthrough(self, page: Page) -> None:
+        # Setup the handler.
+        async def handler() -> None:
+            self.logger.debug('Didomi dialog found, clicking through.')
+            if await page.locator("#didomi-notice-agree-button").is_visible():
+                await page.locator("#didomi-notice-agree-button").click()
+
+        await page.add_locator_handler(page.locator(".didomi-popup-view"), handler)
+        self.logger.info('Didomi handler added')
+
+    async def __dialog_onetrust_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            self.logger.info('######## OT Dialog found, clicking through.')
+            if await page.locator("#onetrust-accept-btn-handler").is_visible():
+                await page.locator("#onetrust-accept-btn-handler").click()
+
+        await page.add_locator_handler(
+            page.locator('.ot-sdk-container'),
+            handler
+        )
+        self.logger.info('OT handler added')
+
+    async def __dialog_hubspot_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            self.logger.info('######## HS Dialog found, clicking through.')
+            if await page.locator("#hs-eu-confirmation-button").is_visible():
+                await page.locator("#hs-eu-confirmation-button").click()
+
+        await page.add_locator_handler(
+            page.locator('#hs-eu-cookie-confirmation'),
+            handler
+        )
+        self.logger.info('HS handler added')
+
+    async def __dialog_cookiebot_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            self.logger.info('######## Cookiebot Dialog found, clicking through.')
+            if await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").is_visible():
+                await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").click()
+
+        await page.add_locator_handler(
+            page.locator('#CybotCookiebotDialogBody'),
+            handler
+        )
+        self.logger.info('Cookiebot handler added')
+
+    async def __dialog_alert_dialog_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            if await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").is_visible():
+                self.logger.info('Consent window found, clicking through.')
+                await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").click()
+            else:
+                self.logger.info('Consent window found, but no button to click through.')
+        await page.add_locator_handler(
+            page.get_by_role("alertdialog"),
+            handler
+        )
+        self.logger.info('alert dialog handler added')
+
+    async def __dialog_complianz_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            self.logger.info('######## Complianz found, clicking through.')
+            if await page.locator('.cmplz-show').locator("button.cmplz-accept").is_visible():
+                await page.locator('.cmplz-show').locator("button.cmplz-accept").click()
+
+        await page.add_locator_handler(
+            page.locator('.cmplz-show'),
+            handler
+        )
+        self.logger.info('Complianz handler added')
+
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
                            page: Page | None=None, depth: int=0,
                            rendered_hostname_only: bool=True,
-                           with_favicon: bool=False
+                           with_favicon: bool=False,
+                           allow_tracking: bool=False
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
@@ -501,10 +573,20 @@ class Capture():
         else:
             capturing_sub = False
             page = await self.context.new_page()
+            if allow_tracking:
+                # Add authorization clickthroughs
+                await self.__dialog_didomi_clickthrough(page)
+                await self.__dialog_onetrust_clickthrough(page)
+                await self.__dialog_hubspot_clickthrough(page)
+                await self.__dialog_cookiebot_clickthrough(page)
+                await self.__dialog_alert_dialog_clickthrough(page)
+                await self.__dialog_complianz_clickthrough(page)
+
             await stealth_async(page)
             page.set_default_timeout(self._capture_timeout * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
             page.on("request", store_request)
+
         try:
             # Parse the URL. If there is a fragment, we need to scroll to it manually
             parsed_url = urlparse(url, allow_fragments=True)
@@ -554,6 +636,10 @@ class Capture():
                 # page instrumentation
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
                 self.logger.debug('Start instrumentation.')
+
+                if allow_tracking:
+                    # This event is required trigger the add_locator_handler
+                    await page.locator("body").click(button="right")
 
                 # ==== recaptcha
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
