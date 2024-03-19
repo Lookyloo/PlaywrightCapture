@@ -29,7 +29,7 @@ SpeechRecognition = {version = "^3.10.1", optional = true}
 pytz = {"version" = "^2024.1", python = "<3.9"}
 tzdata = "^2024.1"
 playwright-stealth = "^1.0.6"
-setuptools = "^69.1.1"
+setuptools = "^69.2.0"
 puremagic = "^1.21"
 
 [tool.poetry.extras]
