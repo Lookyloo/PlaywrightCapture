@@ -122,7 +122,7 @@ class Capture():
                               'password': proxy.get('password', '')}
 
         self.should_retry: bool = False
-        self.__network_not_idle: int = 1
+        self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
         self._cookies: list[SetCookieParam] = []
         self._http_credentials: HttpCredentials = {}
         self._geolocation: Geolocation = {}
@@ -556,6 +556,8 @@ class Capture():
                 return
             try:
                 if response := await request.response():
+                    if got_favicons:
+                        return
                     if response.ok:
                         try:
                             if body := await response.body():
@@ -648,8 +650,8 @@ class Capture():
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
                 if CAN_SOLVE_CAPTCHA:
                     try:
-                        if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=5000)
-                                and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=5000)):
+                        if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=3000)
+                                and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=2000)):
                             self.logger.info('Found a captcha')
                             await self._recaptcha_solver(page)
                     except PlaywrightTimeoutError as e:
@@ -678,7 +680,7 @@ class Capture():
                         # We got a fragment, make sure we go to it and scroll only a little bit.
                         fragment = unquote(parsed_url.fragment)
                         try:
-                            await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=5000)
+                            await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
                             await self._safe_wait(page)
                             await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                             self.logger.debug('Jumped to fragment.')
@@ -724,6 +726,7 @@ class Capture():
                     to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
                     got_favicons = True
 
+                await self._safe_wait(page)
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 if self.wait_for_download > 0:
@@ -857,7 +860,7 @@ class Capture():
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         try:
-            return await page.screenshot(full_page=True, timeout=10000)
+            return await page.screenshot(full_page=True, timeout=5000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
 
@@ -875,7 +878,7 @@ class Capture():
     async def _safe_wait(self, page: Page) -> None:
         try:
             # If we don't have networkidle relatively quick, it's probably because we're playing a video.
-            await page.wait_for_load_state('networkidle', timeout=10000 / self.__network_not_idle)
+            await page.wait_for_load_state('networkidle', timeout=self._capture_timeout / self.__network_not_idle)
         except PlaywrightTimeoutError:
             # Network never idle, keep going
             self.__network_not_idle += 1
