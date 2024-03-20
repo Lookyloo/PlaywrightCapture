@@ -461,7 +461,7 @@ class Capture():
                 await page.locator("#onetrust-accept-btn-handler").click()
 
         await page.add_locator_handler(
-            page.locator('.ot-sdk-container'),
+            page.locator('#onetrust-banner-sdk'),
             handler
         )
         self.logger.info('OT handler added')
@@ -524,6 +524,7 @@ class Capture():
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
+        got_favicons = False
 
         # We don't need to be super strict on the lock, as it simply triggers a wait for network idle before stoping the capture
         # but we still need it to be an integer in case we have more than one download triggered and one finished when the others haven't
@@ -551,6 +552,8 @@ class Capture():
 
         async def store_request(request: Request) -> None:
             # This method is called on each request, to store the body (if it is an image) in a dict indexed by URL
+            if got_favicons:
+                return
             try:
                 if response := await request.response():
                     if response.ok:
@@ -585,7 +588,7 @@ class Capture():
             await stealth_async(page)
             page.set_default_timeout(self._capture_timeout * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
-            page.on("request", store_request)
+            page.on("requestfinished", store_request)
 
         try:
             # Parse the URL. If there is a fragment, we need to scroll to it manually
@@ -717,10 +720,11 @@ class Capture():
 
                 to_return['last_redirected_url'] = page.url
 
-                to_return['png'] = await self._failsafe_get_screenshot(page)
-
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
                     to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
+                    got_favicons = True
+
+                to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
@@ -853,17 +857,17 @@ class Capture():
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         try:
-            return await page.screenshot(full_page=True)
+            return await page.screenshot(full_page=True, timeout=10000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
 
         try:
-            return await page.screenshot(full_page=True, scale="css")
+            return await page.screenshot(full_page=True, scale="css", timeout=10000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
 
         try:
-            return await page.screenshot()
+            return await page.screenshot(scale="css", animations='disabled', timeout=10000)
         except Error as e:
             self.logger.warning(f"Unable to get any screenshot: {e}")
             raise e
