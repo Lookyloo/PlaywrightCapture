@@ -495,13 +495,29 @@ class Capture():
             if await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").is_visible():
                 self.logger.info('Consent window found, clicking through.')
                 await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").click()
+            elif await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").is_visible():
+                await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").click(timeout=1000)
             else:
                 self.logger.info('Consent window found, but no button to click through.')
+
         await page.add_locator_handler(
             page.get_by_role("alertdialog"),
             handler
         )
         self.logger.info('alert dialog handler added')
+
+    async def __dialog_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            if await page.locator(".qc-cmp2-summary-buttons").locator("button").first.is_visible():
+                self.logger.info('Consent window found, clicking through.')
+                await page.locator(".qc-cmp2-summary-buttons").locator("button").locator("nth=-1").click()
+            else:
+                self.logger.info('Consent window found, but no button to click through.')
+        await page.add_locator_handler(
+            page.get_by_role("dialog"),
+            handler
+        )
+        self.logger.info('dialog handler added')
 
     async def __dialog_complianz_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
@@ -552,13 +568,13 @@ class Capture():
 
         async def store_request(request: Request) -> None:
             # This method is called on each request, to store the body (if it is an image) in a dict indexed by URL
-            if got_favicons:
+            if got_favicons or request.resource_type != 'image':
                 return
             try:
                 if response := await request.response():
                     if got_favicons:
                         return
-                    if response.ok:
+                    if request.resource_type == 'image' and response.ok:
                         try:
                             if body := await response.body():
                                 try:
@@ -584,8 +600,9 @@ class Capture():
                 await self.__dialog_onetrust_clickthrough(page)
                 await self.__dialog_hubspot_clickthrough(page)
                 await self.__dialog_cookiebot_clickthrough(page)
-                await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_complianz_clickthrough(page)
+                await self.__dialog_alert_dialog_clickthrough(page)
+                await self.__dialog_clickthrough(page)
 
             await stealth_async(page)
             page.set_default_timeout(self._capture_timeout * 1000)
@@ -726,9 +743,6 @@ class Capture():
                     to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
                     got_favicons = True
 
-                await self._safe_wait(page)
-                to_return['png'] = await self._failsafe_get_screenshot(page)
-
                 if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
                     await self._safe_wait(page)
@@ -746,6 +760,10 @@ class Capture():
                                 filename, file_content = f_details
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
+
+                await self._safe_wait(page)
+                to_return['png'] = await self._failsafe_get_screenshot(page)
+
                 self._already_captured.add(url)
                 if depth > 0 and to_return.get('html') and to_return['html']:
                     if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
@@ -860,17 +878,17 @@ class Capture():
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         try:
-            return await page.screenshot(full_page=True, timeout=5000)
+            return await page.screenshot(full_page=True, timeout=20000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
 
         try:
-            return await page.screenshot(full_page=True, scale="css", timeout=10000)
+            return await page.screenshot(full_page=True, scale="css", timeout=20000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
 
         try:
-            return await page.screenshot(scale="css", animations='disabled', timeout=10000)
+            return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=20000)
         except Error as e:
             self.logger.warning(f"Unable to get any screenshot: {e}")
             raise e
