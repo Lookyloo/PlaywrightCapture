@@ -16,8 +16,8 @@ A very basic example:
 from playwrightcapture import Capture
 
 async with Capture() as capture:
-    await capture.prepare_context()
-    entries = await capture.capture_page(url)
+    await capture.initialize_context()
+    entries = await capture.capture_page(url, max_depth_capture_time=90)
 ```
 
 Entries is a dictionaries that contains (if all goes well) the HAR, the screenshot, all the cookies of the session, the URL as it is in the browser at the end of the capture, and the full HTML page as rendered.
