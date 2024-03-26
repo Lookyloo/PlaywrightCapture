@@ -426,10 +426,10 @@ class Capture():
             while max_tries > 0:
                 # cf_locator = page.frame_locator("iframe[title=\"Widget containing a Cloudflare security challenge\"]").get_by_label("Verify you are human")
                 cf_locator = page.frame_locator("iframe[title=\"Widget containing a Cloudflare security challenge\"]").get_by_role("checkbox")
-                await self._safe_wait(page)
+                await self._safe_wait(page, 5)
                 await cf_locator.click(force=True, position={"x": random.uniform(1, 32), "y": random.uniform(1, 32)})
                 self.logger.info('Cloudflare widget visible.')
-                await self._safe_wait(page)
+                await self._safe_wait(page, 5)
                 await self._wait_for_random_timeout(page, 2)
                 spinner = page.locator('#challenge-spinner')
                 while True:
@@ -449,7 +449,7 @@ class Capture():
         async def handler() -> None:
             self.logger.debug('Didomi dialog found, clicking through.')
             if await page.locator("#didomi-notice-agree-button").is_visible():
-                await page.locator("#didomi-notice-agree-button").click()
+                await page.locator("#didomi-notice-agree-button").click(timeout=2000)
 
         await page.add_locator_handler(page.locator(".didomi-popup-view"), handler)
         self.logger.info('Didomi handler added')
@@ -458,7 +458,7 @@ class Capture():
         async def handler() -> None:
             self.logger.info('######## OT Dialog found, clicking through.')
             if await page.locator("#onetrust-accept-btn-handler").is_visible():
-                await page.locator("#onetrust-accept-btn-handler").click()
+                await page.locator("#onetrust-accept-btn-handler").click(timeout=2000)
 
         await page.add_locator_handler(
             page.locator('#onetrust-banner-sdk'),
@@ -470,7 +470,7 @@ class Capture():
         async def handler() -> None:
             self.logger.info('######## HS Dialog found, clicking through.')
             if await page.locator("#hs-eu-confirmation-button").is_visible():
-                await page.locator("#hs-eu-confirmation-button").click()
+                await page.locator("#hs-eu-confirmation-button").click(timeout=2000)
 
         await page.add_locator_handler(
             page.locator('#hs-eu-cookie-confirmation'),
@@ -482,7 +482,7 @@ class Capture():
         async def handler() -> None:
             self.logger.info('######## Cookiebot Dialog found, clicking through.')
             if await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").is_visible():
-                await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").click()
+                await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").click(timeout=2000)
 
         await page.add_locator_handler(
             page.locator('#CybotCookiebotDialogBody'),
@@ -494,7 +494,7 @@ class Capture():
         async def handler() -> None:
             if await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").is_visible():
                 self.logger.info('Consent window found, clicking through.')
-                await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").click()
+                await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").click(timeout=2000)
             elif await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").is_visible():
                 await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").click(timeout=1000)
             else:
@@ -510,7 +510,7 @@ class Capture():
         async def handler() -> None:
             if await page.locator(".qc-cmp2-summary-buttons").locator("button").first.is_visible():
                 self.logger.info('Consent window found, clicking through.')
-                await page.locator(".qc-cmp2-summary-buttons").locator("button").locator("nth=-1").click()
+                await page.locator(".qc-cmp2-summary-buttons").locator("button").locator("nth=-1").click(timeout=2000)
             else:
                 self.logger.info('Consent window found, but no button to click through.')
         await page.add_locator_handler(
@@ -523,13 +523,25 @@ class Capture():
         async def handler() -> None:
             self.logger.info('######## Complianz found, clicking through.')
             if await page.locator('.cmplz-show').locator("button.cmplz-accept").is_visible():
-                await page.locator('.cmplz-show').locator("button.cmplz-accept").click()
+                await page.locator('.cmplz-show').locator("button.cmplz-accept").click(timeout=2000)
 
         await page.add_locator_handler(
             page.locator('.cmplz-show'),
             handler
         )
         self.logger.info('Complianz handler added')
+
+    async def __dialog_yahoo_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            self.logger.info('######## Yahoo found, clicking through.')
+            if await page.locator('.con-wizard').locator("button.accept-all").is_visible():
+                await page.locator('.con-wizard').locator("button.accept-all").click(timeout=2000)
+
+        await page.add_locator_handler(
+            page.locator('.con-wizard'),
+            handler
+        )
+        self.logger.info('Yahoo handler added')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
@@ -601,6 +613,7 @@ class Capture():
                 await self.__dialog_hubspot_clickthrough(page)
                 await self.__dialog_cookiebot_clickthrough(page)
                 await self.__dialog_complianz_clickthrough(page)
+                await self.__dialog_yahoo_clickthrough(page)
                 await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_clickthrough(page)
 
@@ -690,7 +703,7 @@ class Capture():
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
                     self.logger.debug('Moved mouse.')
-                    await self._safe_wait(page)
+                    await self._wait_for_random_timeout(page, 2)
                     self.logger.debug('Keep going after moving mouse.')
 
                     if parsed_url.fragment:
@@ -698,7 +711,7 @@ class Capture():
                         fragment = unquote(parsed_url.fragment)
                         try:
                             await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
-                            await self._safe_wait(page)
+                            await self._wait_for_random_timeout(page, 2)
                             await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                             self.logger.debug('Jumped to fragment.')
                         except PlaywrightTimeoutError as e:
@@ -716,36 +729,21 @@ class Capture():
                         except Error as e:
                             self.logger.debug(f'Unable to scroll: {e}')
 
-                    await self._safe_wait(page)
+                    await self._wait_for_random_timeout(page, 3)
                     self.logger.debug('Keep going after moving on page.')
 
                     try:
                         await page.keyboard.press('PageUp')
                         self.logger.debug('PageUp on keyboard')
-                        await self._safe_wait(page)
+                        await self._wait_for_random_timeout(page, 3)
                         await page.keyboard.press('PageDown')
                         self.logger.debug('PageDown on keyboard')
                     except Error as e:
                         self.logger.debug(f'Unable to use keyboard: {e}')
 
-                self.logger.debug('Done with instrumentation, waiting for network idle.')
-                await self._safe_wait(page)
-                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after network idle
-                await self._safe_wait(page)
-                self.logger.debug('Done with instrumentation, done with waiting.')
-
-                if content := await self._failsafe_get_content(page):
-                    to_return['html'] = content
-
-                to_return['last_redirected_url'] = page.url
-
-                if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
-                    got_favicons = True
-
                 if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
-                    await self._safe_wait(page)
+                    await self._safe_wait(page, 20)
 
                 if multiple_downloads:
                     if len(multiple_downloads) == 1:
@@ -761,7 +759,19 @@ class Capture():
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
 
+                self.logger.debug('Done with instrumentation, waiting for network idle.')
+                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
                 await self._safe_wait(page)
+                self.logger.debug('Done with instrumentation, done with waiting.')
+
+                if content := await self._failsafe_get_content(page):
+                    to_return['html'] = content
+
+                if 'html' in to_return and to_return['html'] is not None and with_favicon:
+                    to_return['potential_favicons'] = self.get_favicons(page.url, to_return['html'])
+                    got_favicons = True
+
+                to_return['last_redirected_url'] = page.url
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 self._already_captured.add(url)
@@ -877,29 +887,37 @@ class Capture():
         return to_return
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
+        self.logger.debug("Capturing a screenshot of the full page.")
         try:
-            return await page.screenshot(full_page=True, timeout=20000)
+            return await page.screenshot(full_page=True, timeout=5000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
 
         try:
-            return await page.screenshot(full_page=True, scale="css", timeout=20000)
+            return await page.screenshot(full_page=True, scale="css", timeout=5000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
 
         try:
-            return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=20000)
+            return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=5000)
         except Error as e:
             self.logger.warning(f"Unable to get any screenshot: {e}")
             raise e
 
-    async def _safe_wait(self, page: Page) -> None:
+    async def _safe_wait(self, page: Page, force_max_wait_in_sec: int | None=None) -> None:
         try:
+            if force_max_wait_in_sec is not None:
+                max_wait = force_max_wait_in_sec
+            else:
+                max_wait = self._capture_timeout / self.__network_not_idle
+            max_wait *= 1000
+            self.logger.debug(f'Waiting for network idle, max wait: {max_wait}s')
             # If we don't have networkidle relatively quick, it's probably because we're playing a video.
-            await page.wait_for_load_state('networkidle', timeout=self._capture_timeout / self.__network_not_idle)
+            await page.wait_for_load_state('networkidle', timeout=max_wait)
         except PlaywrightTimeoutError:
             # Network never idle, keep going
             self.__network_not_idle += 1
+            self.logger.debug(f'Timed out - Waiting for network idle, max wait: {max_wait}s')
 
     async def _failsafe_get_content(self, page: Page) -> str | None:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
@@ -912,7 +930,7 @@ class Capture():
                 self.logger.debug('Unable to get page content, trying again.')
                 tries -= 1
                 await self._wait_for_random_timeout(page, 1)
-                await self._safe_wait(page)
+                await self._safe_wait(page, 5)
             except Exception as e:
                 self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
                 break
@@ -1022,7 +1040,7 @@ class Capture():
                 text = recognizer.recognize_google(audio)
             await main_frame.get_by_role("textbox", name="Enter what you hear").fill(text)
             await main_frame.get_by_role("button", name="Verify").click()
-            await self._safe_wait(page)
+            await self._safe_wait(page, 5)
             await self._wait_for_random_timeout(page, random.randint(3, 6))
             try:
                 if await recaptcha_init_frame.locator("//span[@id='recaptcha-anchor']").first.is_checked(timeout=5000):
