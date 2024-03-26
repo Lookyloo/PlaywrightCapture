@@ -511,10 +511,16 @@ class Capture():
             if await page.locator(".qc-cmp2-summary-buttons").locator("button").first.is_visible():
                 self.logger.info('Consent window found, clicking through.')
                 await page.locator(".qc-cmp2-summary-buttons").locator("button").locator("nth=-1").click(timeout=2000)
+            elif await page.locator("#popin_tc_privacy").locator("#popin_tc_privacy_button_2").is_visible():
+                self.logger.info('Consent window found, clicking through.')
+                await page.locator("#popin_tc_privacy").locator("#popin_tc_privacy_button_2").click(timeout=2000)
+            elif await page.get_by_test_id("uc-accept-all-button").is_visible():
+                self.logger.info('Consent window found, clicking through.')
+                await page.get_by_test_id("uc-accept-all-button").click(timeout=2000)
             else:
                 self.logger.info('Consent window found, but no button to click through.')
         await page.add_locator_handler(
-            page.get_by_role("dialog"),
+            page.get_by_role("dialog").last,
             handler
         )
         self.logger.info('dialog handler added')
@@ -539,6 +545,18 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('.con-wizard'),
+            handler
+        )
+        self.logger.info('Yahoo handler added')
+
+    async def __dialog_ppms_clickthrough(self, page: Page) -> None:
+        async def handler() -> None:
+            self.logger.info('######## piwik found, clicking through.')
+            if await page.locator('.ppms_cm_popup_overlay').locator("button.ppms_cm_agree-to-all").is_visible():
+                await page.locator('.ppms_cm_popup_overlay').locator("button.ppms_cm_agree-to-all").click(timeout=2000)
+
+        await page.add_locator_handler(
+            page.locator('#ppms_cm_popup_overlay'),
             handler
         )
         self.logger.info('Yahoo handler added')
@@ -614,6 +632,7 @@ class Capture():
                 await self.__dialog_cookiebot_clickthrough(page)
                 await self.__dialog_complianz_clickthrough(page)
                 await self.__dialog_yahoo_clickthrough(page)
+                await self.__dialog_ppms_clickthrough(page)
                 await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_clickthrough(page)
 
@@ -672,10 +691,6 @@ class Capture():
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
                 self.logger.debug('Start instrumentation.')
 
-                if allow_tracking:
-                    # This event is required trigger the add_locator_handler
-                    await page.locator("body").click(button="right")
-
                 # ==== recaptcha
                 # Same technique as: https://github.com/NikolaiT/uncaptcha3
                 if CAN_SOLVE_CAPTCHA:
@@ -700,6 +715,12 @@ class Capture():
                 # check if we have anything on the page. If we don't, the page is not working properly.
                 if await self._failsafe_get_content(page):
                     self.logger.debug('Got rendered content')
+                    if allow_tracking:
+                        await self._wait_for_random_timeout(page, 2)
+                        # This event is required trigger the add_locator_handler
+                        if page.locator("body").is_visible():
+                            await page.locator("body").click(button="right", timeout=2000)
+
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
                     self.logger.debug('Moved mouse.')
@@ -905,6 +926,7 @@ class Capture():
             raise e
 
     async def _safe_wait(self, page: Page, force_max_wait_in_sec: int | None=None) -> None:
+        max_wait: float
         try:
             if force_max_wait_in_sec is not None:
                 max_wait = force_max_wait_in_sec
@@ -1095,7 +1117,7 @@ class Capture():
         if timeout > 1000:
             self.logger.warning(f'The waiting time is too long {timeout}, we expect seconds, not miliseconds.')
             timeout = int(timeout / 1000)
-        _wait_time = random.randrange(timeout * 1000 - 500, timeout * 1000 + 500)
+        _wait_time = random.randrange(max(timeout * 1000 - 500, 500), max(timeout * 1000 + 500, 1000))
         await page.wait_for_timeout(_wait_time)
 
     def make_frame_tree(self, frame: Frame) -> dict[str, list[dict[str, Any]]]:
