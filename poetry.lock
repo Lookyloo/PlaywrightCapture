@@ -777,13 +777,13 @@ files = [
 
 [[package]]
 name = "speechrecognition"
-version = "3.10.1"
+version = "3.10.2"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "SpeechRecognition-3.10.1-py2.py3-none-any.whl", hash = "sha256:69898b2b0bbd5bc65647c5ef833fe318ad74f02e8a6af5c9fd671933083660bc"},
-    {file = "SpeechRecognition-3.10.1.tar.gz", hash = "sha256:718731886b7836e20a06b9a2c6cace12a9e130971bb6af1b1dd130b22bad9f82"},
+    {file = "SpeechRecognition-3.10.2-py2.py3-none-any.whl", hash = "sha256:e3b3619918685507c41c44304344494b6d90a9bb464e41ac908e2ef40b73c691"},
+    {file = "SpeechRecognition-3.10.2.tar.gz", hash = "sha256:f2b7283dc2ea077f3f627d5fa267499907b4a01c3dde54ab793471c56ddf1d1f"},
 ]
 
 [package.dependencies]
