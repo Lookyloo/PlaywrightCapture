@@ -718,7 +718,7 @@ class Capture():
                     if allow_tracking:
                         await self._wait_for_random_timeout(page, 2)
                         # This event is required trigger the add_locator_handler
-                        if page.locator("body").is_visible():
+                        if await page.locator("body").is_visible():
                             await page.locator("body").click(button="right", timeout=2000)
 
                     # move mouse
