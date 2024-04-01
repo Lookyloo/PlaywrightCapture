@@ -351,7 +351,6 @@ files = [
     {file = "lxml-5.1.1-cp37-cp37m-musllinux_1_1_x86_64.whl", hash = "sha256:2992480a25434d2df31413136ef87effab14d43b07f1f54c5012c4f6c7530144"},
     {file = "lxml-5.1.1-cp37-cp37m-win32.whl", hash = "sha256:1d0270d33fbde6e1c6758ff58e2e284144f5331aa05dfe7f44ceafdf4e9d31aa"},
     {file = "lxml-5.1.1-cp37-cp37m-win_amd64.whl", hash = "sha256:dec3491aa69a91ed07f5e6bc033e2b1a9424447ad5312ee69ac973e94d79083a"},
-    {file = "lxml-5.1.1-cp38-cp38-macosx_10_9_universal2.whl", hash = "sha256:87b67d8620c2725d666e5d88ddba56bcdb1f52211a2e7d22f951b67c35f7f627"},
     {file = "lxml-5.1.1-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:5bd2595ebe95214446e00a1ab94571f778b126e17736ea222c07505c4e092289"},
     {file = "lxml-5.1.1-cp38-cp38-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:bfbdadc3cfe552331ecb0bbdcabf148d1697c73aa4321151e0e6c1704eeb76a7"},
     {file = "lxml-5.1.1-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:52358249292bc155af681a9240ec3d944c1195f0124aa10ec4e3635adc1e10a1"},
@@ -773,13 +772,13 @@ files = [
 
 [[package]]
 name = "speechrecognition"
-version = "3.10.2"
+version = "3.10.3"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "SpeechRecognition-3.10.2-py2.py3-none-any.whl", hash = "sha256:e3b3619918685507c41c44304344494b6d90a9bb464e41ac908e2ef40b73c691"},
-    {file = "SpeechRecognition-3.10.2.tar.gz", hash = "sha256:f2b7283dc2ea077f3f627d5fa267499907b4a01c3dde54ab793471c56ddf1d1f"},
+    {file = "SpeechRecognition-3.10.3-py2.py3-none-any.whl", hash = "sha256:038e81cdd42cb27ffc4dcf63d853418e5844fe060cc0d41123667a5b4420916a"},
+    {file = "SpeechRecognition-3.10.3.tar.gz", hash = "sha256:91b01ce7a0435d0d039435d714eede10712b0628b3695623cbb9fbe4d2e2b82d"},
 ]
 
 [package.dependencies]
@@ -788,6 +787,7 @@ typing-extensions = "*"
 
 [package.extras]
 whisper-api = ["openai"]
+whisper-local = ["openai-whisper", "soundfile"]
 
 [[package]]
 name = "tomli"
