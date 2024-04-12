@@ -1081,6 +1081,10 @@ class Capture():
             elif '; ' in name:
                 name, _ = name.split('; ', maxsplit=1)
             # This is kinda dirty.
+
+            # The format changed in Playwright 1.43.0, the name of the method that failed is set before the exception itself.
+            if ': ' in name:
+                _, name = name.split(': ', maxsplit=1)
             exception._name = name.strip()
 
     def _exception_is_network_error(self, exception: Error) -> bool:
