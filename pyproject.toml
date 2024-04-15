@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.24.3"
+version = "1.24.4"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -29,7 +29,7 @@ SpeechRecognition = {version = "^3.10.3", optional = true}
 pytz = {"version" = "^2024.1", python = "<3.9"}
 tzdata = "^2024.1"
 playwright-stealth = "^1.0.6"
-setuptools = "^69.2.0"
+setuptools = "^69.5.1"
 puremagic = "^1.21"
 
 [tool.poetry.extras]
