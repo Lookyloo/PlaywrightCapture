@@ -681,7 +681,10 @@ class Capture():
                             self.should_retry = True
                         except Exception:
                             raise e
-                elif self._exception_is_network_error(initial_error):
+                else:
+                    if not self._exception_is_network_error(initial_error):
+                        # TODO: Do something?
+                        self.logger.warning(f'Unexpected error: {initial_error}')
                     raise initial_error
             else:
                 await page.bring_to_front()
@@ -718,8 +721,8 @@ class Capture():
                     if allow_tracking:
                         await self._wait_for_random_timeout(page, 2)
                         # This event is required trigger the add_locator_handler
-                        if await page.locator("body").is_visible():
-                            await page.locator("body").click(button="right", timeout=2000)
+                        if await page.locator("body").first.is_visible():
+                            await page.locator("body").first.click(button="right", timeout=2000)
 
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
@@ -864,7 +867,9 @@ class Capture():
                             'Connection closed',
                             'Navigation interrupted by another one',
                             'Navigation failed because page was closed!',
-                            'Protocol error (Page.bringToFront): Not attached to an active page']:
+                            'Protocol error (Page.bringToFront): Not attached to an active page',
+                            'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
+                            'Load cannot follow more than 20 redirections']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
@@ -872,6 +877,9 @@ class Capture():
                 # The browser barfed, let's try again
                 self.logger.info(f'Browser barfed on {url} (retrying): {e.message}')
                 self.should_retry = True
+            elif e.name in ['net::ERR_INVALID_AUTH_CREDENTIALS']:
+                # No need to retry, the credentials are wrong/missing.
+                pass
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: {e.message}')
@@ -932,8 +940,8 @@ class Capture():
                 max_wait = force_max_wait_in_sec
             else:
                 max_wait = self._capture_timeout / self.__network_not_idle
-            max_wait *= 1000
             self.logger.debug(f'Waiting for network idle, max wait: {max_wait}s')
+            max_wait *= 1000
             # If we don't have networkidle relatively quick, it's probably because we're playing a video.
             await page.wait_for_load_state('networkidle', timeout=max_wait)
         except PlaywrightTimeoutError:
@@ -1103,8 +1111,11 @@ class Capture():
                 'net::ERR_CONNECTION_CLOSED',
                 'net::ERR_CONNECTION_REFUSED',
                 'net::ERR_CONNECTION_RESET',
+                'net::ERR_CONNECTION_TIMED_OUT',
                 'net::ERR_EMPTY_RESPONSE',
+                'net::ERR_HTTP_RESPONSE_CODE_FAILURE',
                 'net::ERR_HTTP2_PROTOCOL_ERROR',
+                'net::ERR_INVALID_RESPONSE',
                 'net::ERR_NAME_NOT_RESOLVED',
                 'net::ERR_SOCKS_CONNECTION_FAILED',
                 'net::ERR_SSL_UNRECOGNIZED_NAME_ALERT',
@@ -1251,8 +1262,14 @@ class Capture():
                         # unable to identify the mimetype
                         self.logger.debug(f'Unable to identify the mimetype for favicon from {u}')
                     else:
-                        if mimetype.startswith('image'):
+                        if not mimetype:
+                            # empty, ignore
+                            pass
+                        elif mimetype.startswith('image'):
                             to_return.add(favicon)
+                        elif mimetype.startswith('text'):
+                            # Just ignore, it's probably a 404 page
+                            pass
                         else:
                             self.logger.warning(f'Unexpected mimetype for favicon from {u}: {mimetype}')
                 self.logger.debug(f'Done with favicon from {u}.')
