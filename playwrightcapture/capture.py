@@ -14,8 +14,9 @@ import time
 
 from base64 import b64decode
 from io import BytesIO
+from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
-from typing import Any, TypedDict, Literal, TYPE_CHECKING
+from typing import Any, TypedDict, Literal, TYPE_CHECKING, MutableMapping
 from urllib.parse import urlparse, unquote, urljoin
 from zipfile import ZipFile
 
@@ -79,6 +80,16 @@ class CaptureResponse(TypedDict, total=False):
     potential_favicons: set[bytes] | None
 
 
+class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
+    """
+    Prepend log entry with the UUID of the capture
+    """
+    def process(self, msg: str, kwargs: MutableMapping[str, Any]) -> tuple[str, MutableMapping[str, Any]]:
+        if self.extra:
+            return '[{}] {}'.format(self.extra['uuid'], msg), kwargs
+        return msg, kwargs
+
+
 class Capture():
 
     _browsers: list[BROWSER] = ['chromium', 'firefox', 'webkit']
@@ -90,7 +101,8 @@ class Capture():
 
     def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
                  proxy: str | dict[str, str] | None=None,
-                 general_timeout_in_sec: int | None = None, loglevel: str | int='INFO'):
+                 general_timeout_in_sec: int | None = None, loglevel: str | int='INFO',
+                 uuid: str | None=None):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -98,9 +110,15 @@ class Capture():
         :param proxy: The external proxy to use for the capture.
         :param general_timeout_in_sec: The general timeout for the capture, including children.
         :param loglevel: Python loglevel
+        :param uuid: The UUID of the capture.
         """
-        self.logger = logging.getLogger('playwrightcapture')
-        self.logger.setLevel(loglevel)
+        master_logger = logging.getLogger('playwrightcapture')
+        master_logger.setLevel(loglevel)
+        self.logger: Logger | PlaywrightCaptureLogAdapter
+        if uuid is not None:
+            self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': uuid})
+        else:
+            self.logger = master_logger
         self.browser_name: BROWSER = browser if browser else 'chromium'
 
         if general_timeout_in_sec is None:
