@@ -700,9 +700,6 @@ class Capture():
                         except Exception:
                             raise e
                 else:
-                    if not self._exception_is_network_error(initial_error):
-                        # TODO: Do something?
-                        self.logger.warning(f'Unexpected error: {initial_error}')
                     raise initial_error
             else:
                 await page.bring_to_front()
@@ -887,7 +884,11 @@ class Capture():
                             'Navigation failed because page was closed!',
                             'Protocol error (Page.bringToFront): Not attached to an active page',
                             'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
-                            'Load cannot follow more than 20 redirections']:
+                            'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
+                            'Peer sent fatal TLS alert: The server name sent was not recognized',
+                            'Load cannot follow more than 20 redirections',
+                            'Page crashed',
+                            'Error receiving data: Connection reset by peer']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
