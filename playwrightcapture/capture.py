@@ -474,7 +474,7 @@ class Capture():
             if await page.locator("#didomi-notice-agree-button").is_visible():
                 await page.locator("#didomi-notice-agree-button").click(timeout=2000)
 
-        await page.add_locator_handler(page.locator(".didomi-popup-view"), handler)
+        await page.add_locator_handler(page.locator(".didomi-popup-view").last, handler)
         self.logger.info('Didomi handler added')
 
     async def __dialog_onetrust_clickthrough(self, page: Page) -> None:
@@ -483,7 +483,7 @@ class Capture():
                 await page.locator("#onetrust-accept-btn-handler").click(timeout=2000)
 
         await page.add_locator_handler(
-            page.locator('#onetrust-banner-sdk'),
+            page.locator('#onetrust-banner-sdk').last,
             handler
         )
         self.logger.info('OT handler added')
@@ -494,7 +494,7 @@ class Capture():
                 await page.locator("#hs-eu-confirmation-button").click(timeout=2000)
 
         await page.add_locator_handler(
-            page.locator('#hs-eu-cookie-confirmation'),
+            page.locator('#hs-eu-cookie-confirmation').last,
             handler
         )
         self.logger.info('HS handler added')
@@ -609,7 +609,11 @@ class Capture():
                     multiple_downloads.append((filename, file_content))
                     self.logger.info('Done with download.')
             except Exception as e:
-                self.logger.warning(f'Unable to finish download triggered from JS: {e}')
+                if download.page.is_closed():
+                    # Page is closed, skip logging.
+                    pass
+                else:
+                    self.logger.warning(f'Unable to finish download triggered from JS: {e}')
             finally:
                 self.wait_for_download -= 1
 
@@ -1155,6 +1159,7 @@ class Capture():
                 'net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH',
                 'net::ERR_TIMED_OUT',
                 'net::ERR_TOO_MANY_REDIRECTS',
+                'SSL_ERROR_UNKNOWN',
         ]:
             return True
         return False
