@@ -579,13 +579,13 @@ test = ["pytest"]
 
 [[package]]
 name = "pluggy"
-version = "1.4.0"
+version = "1.5.0"
 description = "plugin and hook calling mechanisms for python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pluggy-1.4.0-py3-none-any.whl", hash = "sha256:7db9f7b503d67d1c5b95f59773ebb58a8c1c288129a88665838012cfb07b8981"},
-    {file = "pluggy-1.4.0.tar.gz", hash = "sha256:8c85c2876142a764e5b7548e7d9a0e0ddb46f5185161049a79b7e974454223be"},
+    {file = "pluggy-1.5.0-py3-none-any.whl", hash = "sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669"},
+    {file = "pluggy-1.5.0.tar.gz", hash = "sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1"},
 ]
 
 [package.extras]
@@ -898,13 +898,13 @@ types-html5lib = "*"
 
 [[package]]
 name = "types-dateparser"
-version = "1.1.4.20240331"
+version = "1.2.0.20240420"
 description = "Typing stubs for dateparser"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "types-dateparser-1.1.4.20240331.tar.gz", hash = "sha256:db33c700c39384fa52e8f62e281323f4e9c312cfcf01aec09d990198511c2bfd"},
-    {file = "types_dateparser-1.1.4.20240331-py3-none-any.whl", hash = "sha256:97e51c0ac99a4d0157cd9bb79d83d11431d2004462dbc1a97fd586d64384ab1e"},
+    {file = "types-dateparser-1.2.0.20240420.tar.gz", hash = "sha256:8f813ddf5ef41b32cabe6167138ae833ada10c22811e42220a1e38a0be7adbdc"},
+    {file = "types_dateparser-1.2.0.20240420-py3-none-any.whl", hash = "sha256:bf3695ddfbadfdfc875064895a51d926fd80b04da1a44364c6c1a9703db7b194"},
 ]
 
 [[package]]
@@ -1017,4 +1017,4 @@ recaptcha = ["SpeechRecognition", "pydub", "requests"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "662b6145ea30fbd46f83da9cadffd945d82d416bf688d2e4d72277bfdfe50353"
+content-hash = "5ebe4df7d76633e46d7d0d333685e6c7efa0371bbf4c2b1d19a3c7ced7e40039"
