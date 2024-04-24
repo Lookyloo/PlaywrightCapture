@@ -43,6 +43,11 @@ else:
     from zoneinfo import available_timezones
     all_timezones_set = available_timezones()
 
+if sys.version_info < (3, 11):
+    from async_timeout import timeout
+else:
+    from asyncio import timeout
+
 if TYPE_CHECKING:
     from playwright._impl._api_structures import (SetCookieParam, Geolocation,
                                                   HttpCredentials, Headers,
@@ -474,7 +479,6 @@ class Capture():
 
     async def __dialog_onetrust_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            self.logger.info('######## OT Dialog found, clicking through.')
             if await page.locator("#onetrust-accept-btn-handler").is_visible():
                 await page.locator("#onetrust-accept-btn-handler").click(timeout=2000)
 
@@ -486,7 +490,6 @@ class Capture():
 
     async def __dialog_hubspot_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            self.logger.info('######## HS Dialog found, clicking through.')
             if await page.locator("#hs-eu-confirmation-button").is_visible():
                 await page.locator("#hs-eu-confirmation-button").click(timeout=2000)
 
@@ -498,7 +501,6 @@ class Capture():
 
     async def __dialog_cookiebot_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            self.logger.info('######## Cookiebot Dialog found, clicking through.')
             if await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").is_visible():
                 await page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").click(timeout=2000)
 
@@ -519,7 +521,7 @@ class Capture():
                 self.logger.info('Consent window found, but no button to click through.')
 
         await page.add_locator_handler(
-            page.get_by_role("alertdialog"),
+            page.get_by_role("alertdialog").last,
             handler
         )
         self.logger.info('alert dialog handler added')
@@ -545,7 +547,6 @@ class Capture():
 
     async def __dialog_complianz_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            self.logger.info('######## Complianz found, clicking through.')
             if await page.locator('.cmplz-show').locator("button.cmplz-accept").is_visible():
                 await page.locator('.cmplz-show').locator("button.cmplz-accept").click(timeout=2000)
 
@@ -557,7 +558,6 @@ class Capture():
 
     async def __dialog_yahoo_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            self.logger.info('######## Yahoo found, clicking through.')
             if await page.locator('.con-wizard').locator("button.accept-all").is_visible():
                 await page.locator('.con-wizard').locator("button.accept-all").click(timeout=2000)
 
@@ -569,7 +569,6 @@ class Capture():
 
     async def __dialog_ppms_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            self.logger.info('######## piwik found, clicking through.')
             if await page.locator('.ppms_cm_popup_overlay').locator("button.ppms_cm_agree-to-all").is_visible():
                 await page.locator('.ppms_cm_popup_overlay').locator("button.ppms_cm_agree-to-all").click(timeout=2000)
 
@@ -832,14 +831,17 @@ class Capture():
                         for index, url in enumerate(child_urls):
                             self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
                             start_time = time.time()
+                            if page.is_closed():
+                                self.logger.info('Page is closed, unable to capture children.')
+                                break
                             try:
-                                child_capture = await asyncio.wait_for(
-                                    self.capture_page(url=url, referer=page.url,
-                                                      page=page, depth=depth,
-                                                      rendered_hostname_only=rendered_hostname_only,
-                                                      max_depth_capture_time=max_capture_time),
-                                    timeout=max_capture_time + 1)  # just adding a bit of padding so playwright has the chance to raise the exception first
-                                to_return['children'].append(child_capture)  # type: ignore[union-attr]
+                                async with timeout(max_capture_time + 1):  # just adding a bit of padding so playwright has the chance to raise the exception first
+                                    child_capture = await self.capture_page(
+                                        url=url, referer=page.url,
+                                        page=page, depth=depth,
+                                        rendered_hostname_only=rendered_hostname_only,
+                                        max_depth_capture_time=max_capture_time)
+                                    to_return['children'].append(child_capture)  # type: ignore[union-attr]
                             except (TimeoutError, asyncio.exceptions.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                             except Exception as e:
@@ -880,12 +882,16 @@ class Capture():
                 self.should_retry = True
             elif e.name in ['Download is starting',
                             'Connection closed',
+                            'Connection terminated unexpectedly',
                             'Navigation interrupted by another one',
                             'Navigation failed because page was closed!',
+                            'Target page, context or browser has been closed',
                             'Protocol error (Page.bringToFront): Not attached to an active page',
                             'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
                             'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
+                            'Peer failed to perform TLS handshake: Error receiving data: Connection reset by peer',
                             'Peer sent fatal TLS alert: The server name sent was not recognized',
+                            'Peer sent fatal TLS alert: Internal error',
                             'Load cannot follow more than 20 redirections',
                             'Page crashed',
                             'Error receiving data: Connection reset by peer']:
@@ -896,8 +902,14 @@ class Capture():
                 # The browser barfed, let's try again
                 self.logger.info(f'Browser barfed on {url} (retrying): {e.message}')
                 self.should_retry = True
-            elif e.name in ['net::ERR_INVALID_AUTH_CREDENTIALS']:
+            elif e.name in ['net::ERR_INVALID_AUTH_CREDENTIALS',
+                            'net::ERR_BAD_SSL_CLIENT_AUTH_CERT',
+                            'net::ERR_UNEXPECTED_PROXY_AUTH']:
                 # No need to retry, the credentials are wrong/missing.
+                pass
+            elif e.name and any([msg in e.name for msg in ['is interrupted by another navigation to']]):
+                self.should_retry = True
+            elif e.name and any([msg in e.name for msg in ['Error resolving', 'Could not connect to']]):
                 pass
             else:
                 # Unexpected ones
@@ -949,7 +961,7 @@ class Capture():
         try:
             return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=5000)
         except Error as e:
-            self.logger.warning(f"Unable to get any screenshot: {e}")
+            self.logger.info(f"Unable to get any screenshot: {e}")
             raise e
 
     async def _safe_wait(self, page: Page, force_max_wait_in_sec: int | None=None) -> None:
@@ -1137,9 +1149,10 @@ class Capture():
                 'net::ERR_INVALID_RESPONSE',
                 'net::ERR_NAME_NOT_RESOLVED',
                 'net::ERR_SOCKS_CONNECTION_FAILED',
+                'net::ERR_SSL_KEY_USAGE_INCOMPATIBLE',
+                'net::ERR_SSL_PROTOCOL_ERROR',
                 'net::ERR_SSL_UNRECOGNIZED_NAME_ALERT',
                 'net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH',
-                'net::ERR_SSL_PROTOCOL_ERROR',
                 'net::ERR_TIMED_OUT',
                 'net::ERR_TOO_MANY_REDIRECTS',
         ]:
