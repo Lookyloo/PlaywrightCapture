@@ -30,7 +30,8 @@ pytz = {"version" = "^2024.1", python = "<3.9"}
 tzdata = "^2024.1"
 playwright-stealth = "^1.0.6"
 setuptools = "^69.5.1"
-puremagic = "^1.21"
+puremagic = "^1.22"
+async-timeout = {version = "^4.0.3", python = "<3.11"}
 
 [tool.poetry.extras]
 recaptcha = ["requests", "pydub", "SpeechRecognition"]
@@ -40,7 +41,7 @@ optional = true
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20240229"
-pytest = "^8.1.1"
+pytest = "^8.2.0"
 mypy = "^1.10.0"
 types-dateparser = "^1.2.0.20240420"
 types-requests = "^2.31.0.20240406"
