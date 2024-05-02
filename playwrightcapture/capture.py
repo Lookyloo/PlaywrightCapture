@@ -667,7 +667,6 @@ class Capture():
             parsed_url = urlparse(url, allow_fragments=True)
 
             try:
-                # NOTE 2022-12-02: allow 15s less than the general timeout to get a DOM
                 await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
                 page.on("download", handle_download)
             except Error as initial_error:
@@ -832,6 +831,7 @@ class Capture():
                             else:
                                 child_urls = child_urls[:max_captures]
                         self.logger.info(f'Capturing children, {max_captures} URLs')
+                        consecutive_errors = 0
                         for index, url in enumerate(child_urls):
                             self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
                             start_time = time.time()
@@ -846,13 +846,24 @@ class Capture():
                                         rendered_hostname_only=rendered_hostname_only,
                                         max_depth_capture_time=max_capture_time)
                                     to_return['children'].append(child_capture)  # type: ignore[union-attr]
-                            except (TimeoutError, asyncio.exceptions.TimeoutError):
+                            except (TimeoutError, asyncio.exceptions.TimeoutError, asyncio.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
+                                consecutive_errors += 1
                             except Exception as e:
                                 self.logger.warning(f'Error while capturing child "{url}": {e}. {len(child_urls) - index - 1} more to go.')
+                                consecutive_errors += 1
                             else:
+                                consecutive_errors = 0
                                 runtime = int(time.time() - start_time)
                                 self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {len(child_urls) - index - 1} to go.')
+
+                            if consecutive_errors >= 5:
+                                # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
+                                self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
+                                to_return['error'] = "Got more than 5 consecutive errors while capturing children"
+                                self.should_retry = True
+                                break
+
                             try:
                                 await page.go_back()
                             except PlaywrightTimeoutError:
