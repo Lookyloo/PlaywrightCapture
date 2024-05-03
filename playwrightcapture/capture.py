@@ -1289,8 +1289,15 @@ class Capture():
         session.verify = False
         session.headers['user-agent'] = self.user_agent
         if self.proxy and self.proxy.get('server'):
-            proxies = {'http': self.proxy['server'],
-                       'https': self.proxy['server']}
+            proxy_server = self.proxy['server']
+            # Make sure the DNS desolution is done remotely
+            # https://urllib3.readthedocs.io/en/stable/advanced-usage.html#socks-proxies
+            if proxy_server.startswith('socks5://'):
+                proxy_server = proxy_server.replace('socks5://', 'socks5h://')
+            if proxy_server.startswith('socks4://'):
+                proxy_server = proxy_server.replace('socks4://', 'socks4a://')
+
+            proxies = {'http': proxy_server, 'https': proxy_server}
             session.proxies.update(proxies)
         for u in to_fetch:
             try:
