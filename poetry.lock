@@ -606,13 +606,13 @@ testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
 name = "puremagic"
-version = "1.22"
+version = "1.23"
 description = "Pure python implementation of magic file detection"
 optional = false
 python-versions = "*"
 files = [
-    {file = "puremagic-1.22-py3-none-any.whl", hash = "sha256:8cf3f0deb8230619ed987976cbbe7c4ebba0d19c3c26516d35085b87d23211df"},
-    {file = "puremagic-1.22.tar.gz", hash = "sha256:e584f00cfcc8096f54b092562df91580c3faa8b1599c36d5f9348e95254f2054"},
+    {file = "puremagic-1.23-py3-none-any.whl", hash = "sha256:f67ba60a1820ae154016a0fe6a9fdfa11961f14602939b37b0165d59bd2c26ad"},
+    {file = "puremagic-1.23.tar.gz", hash = "sha256:e0bb7dc814b9d606225b57d4d49175d27c24fb745de1a7b3506067f2be54438f"},
 ]
 
 [[package]]
@@ -852,13 +852,13 @@ files = [
 
 [[package]]
 name = "speechrecognition"
-version = "3.10.3"
+version = "3.10.4"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "SpeechRecognition-3.10.3-py2.py3-none-any.whl", hash = "sha256:038e81cdd42cb27ffc4dcf63d853418e5844fe060cc0d41123667a5b4420916a"},
-    {file = "SpeechRecognition-3.10.3.tar.gz", hash = "sha256:91b01ce7a0435d0d039435d714eede10712b0628b3695623cbb9fbe4d2e2b82d"},
+    {file = "SpeechRecognition-3.10.4-py2.py3-none-any.whl", hash = "sha256:723b8155692a8ed11a30013f15f89a3e57c5dc8bc73c8cb024bf9bd14c21fba5"},
+    {file = "speechrecognition-3.10.4.tar.gz", hash = "sha256:986bafcf61f14625c2f3cea6a471838edd379ed68aeed7b8f3c0fb41e21f1125"},
 ]
 
 [package.dependencies]
@@ -866,6 +866,7 @@ requests = ">=2.26.0"
 typing-extensions = "*"
 
 [package.extras]
+dev = ["flake8", "rstcheck"]
 whisper-api = ["openai"]
 whisper-local = ["openai-whisper", "soundfile"]
 
@@ -882,13 +883,13 @@ files = [
 
 [[package]]
 name = "types-beautifulsoup4"
-version = "4.12.0.20240229"
+version = "4.12.0.20240504"
 description = "Typing stubs for beautifulsoup4"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "types-beautifulsoup4-4.12.0.20240229.tar.gz", hash = "sha256:e37e4cfa11b03b01775732e56d2c010cb24ee107786277bae6bc0fa3e305b686"},
-    {file = "types_beautifulsoup4-4.12.0.20240229-py3-none-any.whl", hash = "sha256:000cdddb8aee4effb45a04be95654de8629fb8594a4f2f1231cff81108977324"},
+    {file = "types-beautifulsoup4-4.12.0.20240504.tar.gz", hash = "sha256:d7b7af4ccc52fc22784d33a529695e34329a9bdd5db6a649c9b25cb2c3a148d5"},
+    {file = "types_beautifulsoup4-4.12.0.20240504-py3-none-any.whl", hash = "sha256:84e04e4473b3c79da04d9d1f89d20a38e5cc92f9c080a8e1f9d36a287b350465"},
 ]
 
 [package.dependencies]
@@ -1015,4 +1016,4 @@ recaptcha = ["SpeechRecognition", "pydub", "requests"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "1a58524ca299f124a3d0f74cbc64fc10001606f4a54b1f05fd946ef308368832"
+content-hash = "180499d69400280105f6db8ef8ce80ead7ea58f35e1ca82e50364cb43221743a"
