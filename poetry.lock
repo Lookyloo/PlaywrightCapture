@@ -411,7 +411,6 @@ files = [
     {file = "lxml-5.2.1-cp37-cp37m-musllinux_1_2_x86_64.whl", hash = "sha256:9e2addd2d1866fe112bc6f80117bcc6bc25191c5ed1bfbcf9f1386a884252ae8"},
     {file = "lxml-5.2.1-cp37-cp37m-win32.whl", hash = "sha256:f51969bac61441fd31f028d7b3b45962f3ecebf691a510495e5d2cd8c8092dbd"},
     {file = "lxml-5.2.1-cp37-cp37m-win_amd64.whl", hash = "sha256:b0b58fbfa1bf7367dde8a557994e3b1637294be6cf2169810375caf8571a085c"},
-    {file = "lxml-5.2.1-cp38-cp38-macosx_10_9_universal2.whl", hash = "sha256:3e183c6e3298a2ed5af9d7a356ea823bccaab4ec2349dc9ed83999fd289d14d5"},
     {file = "lxml-5.2.1-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:804f74efe22b6a227306dd890eecc4f8c59ff25ca35f1f14e7482bbce96ef10b"},
     {file = "lxml-5.2.1-cp38-cp38-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:08802f0c56ed150cc6885ae0788a321b73505d2263ee56dad84d200cab11c07a"},
     {file = "lxml-5.2.1-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0f8c09ed18ecb4ebf23e02b8e7a22a05d6411911e6fabef3a36e4f371f4f2585"},
@@ -852,13 +851,13 @@ files = [
 
 [[package]]
 name = "speechrecognition"
-version = "3.10.3"
+version = "3.10.4"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "SpeechRecognition-3.10.3-py2.py3-none-any.whl", hash = "sha256:038e81cdd42cb27ffc4dcf63d853418e5844fe060cc0d41123667a5b4420916a"},
-    {file = "SpeechRecognition-3.10.3.tar.gz", hash = "sha256:91b01ce7a0435d0d039435d714eede10712b0628b3695623cbb9fbe4d2e2b82d"},
+    {file = "SpeechRecognition-3.10.4-py2.py3-none-any.whl", hash = "sha256:723b8155692a8ed11a30013f15f89a3e57c5dc8bc73c8cb024bf9bd14c21fba5"},
+    {file = "speechrecognition-3.10.4.tar.gz", hash = "sha256:986bafcf61f14625c2f3cea6a471838edd379ed68aeed7b8f3c0fb41e21f1125"},
 ]
 
 [package.dependencies]
@@ -866,6 +865,7 @@ requests = ">=2.26.0"
 typing-extensions = "*"
 
 [package.extras]
+dev = ["flake8", "rstcheck"]
 whisper-api = ["openai"]
 whisper-local = ["openai-whisper", "soundfile"]
 
