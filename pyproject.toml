@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.24.8"
+version = "1.24.9"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
