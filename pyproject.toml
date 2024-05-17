@@ -23,7 +23,6 @@ playwright = "^1.43.0"
 dateparser = "^1.2.0"
 beautifulsoup4 = {version= "^4.12.3", extras = ["lxml", "charset_normalizer"]}
 w3lib = "^2.1.2"
-requests = {extras = ["socks"], version = "^2.31.0"}
 pydub = {version = "^0.25.1", optional = true}
 SpeechRecognition = {version = "^3.10.4", optional = true}
 pytz = {"version" = "^2024.1", python = "<3.9"}
@@ -32,19 +31,20 @@ playwright-stealth = "^1.0.6"
 setuptools = "^69.5.1"
 puremagic = "^1.23"
 async-timeout = {version = "^4.0.3", python = "<3.11"}
+aiohttp = {extras = ["speedups"], version = "^3.9.5"}
+aiohttp-socks = "^0.8.4"
 
 [tool.poetry.extras]
-recaptcha = ["requests", "pydub", "SpeechRecognition"]
+recaptcha = ["pydub", "SpeechRecognition"]
 
 [tool.poetry.group.dev]
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-types-beautifulsoup4 = "^4.12.0.20240504"
+types-beautifulsoup4 = "^4.12.0.20240511"
 pytest = "^8.2.0"
 mypy = "^1.10.0"
 types-dateparser = "^1.2.0.20240420"
-types-requests = "^2.31.0.20240406"
 types-pytz = "^2024.1.0.20240417"
 
 
