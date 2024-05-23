@@ -1155,6 +1155,7 @@ class Capture():
                 'NS_ERROR_ABORT',
                 'NS_ERROR_CONNECTION_REFUSED',
                 'NS_ERROR_NET_INTERRUPT',
+                'NS_ERROR_NET_PARTIAL_TRANSFER',
                 'NS_ERROR_NET_RESET',
                 'NS_ERROR_NET_TIMEOUT',
                 'NS_ERROR_REDIRECT_LOOP',
