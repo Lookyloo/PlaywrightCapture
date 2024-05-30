@@ -552,11 +552,11 @@ class Capture():
 
     async def __dialog_complianz_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            if await page.locator('.cmplz-show').locator("button.cmplz-accept").is_visible():
-                await page.locator('.cmplz-show').locator("button.cmplz-accept").click(timeout=2000)
+            if await page.locator('.cmplz-show').first.locator("button.cmplz-accept").is_visible():
+                await page.locator('.cmplz-show').first.locator("button.cmplz-accept").click(timeout=2000)
 
         await page.add_locator_handler(
-            page.locator('.cmplz-show'),
+            page.locator('.cmplz-show').first,
             handler,
             times=1, no_wait_after=True
         )
@@ -652,7 +652,13 @@ class Capture():
             capturing_sub = True
         else:
             capturing_sub = False
-            page = await self.context.new_page()
+            try:
+                page = await self.context.new_page()
+            except Error as e:
+                self.logger.warning(f'The context is in a broken state: {e}')
+                self.should_retry = True
+                return to_return
+
             if allow_tracking:
                 # Add authorization clickthroughs
                 await self.__dialog_didomi_clickthrough(page)
@@ -712,8 +718,13 @@ class Capture():
                 else:
                     raise initial_error
             else:
-                await page.bring_to_front()
-                self.logger.debug('Page moved to front.')
+                try:
+                    await page.bring_to_front()
+                    self.logger.debug('Page moved to front.')
+                except Error as e:
+                    self.should_retry = True
+                    self.logger.warning('Page in a broken state.')
+                    raise e
 
                 # page instrumentation
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
@@ -910,6 +921,7 @@ class Capture():
                             'Navigation failed because page was closed!',
                             'Target page, context or browser has been closed',
                             'Protocol error (Page.bringToFront): Not attached to an active page',
+                            'Peer failed to perform TLS handshake: A packet with illegal or unsupported version was received.',
                             'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
                             'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
                             'Peer failed to perform TLS handshake: Error receiving data: Connection reset by peer',
@@ -917,7 +929,10 @@ class Capture():
                             'Peer sent fatal TLS alert: Internal error',
                             'Load cannot follow more than 20 redirections',
                             'Page crashed',
-                            'Error receiving data: Connection reset by peer']:
+                            'Error receiving data: Connection reset by peer',
+                            'Internal SOCKSv5 proxy server error.',
+                            'Host unreachable through SOCKSv5 server.',
+                            'HTTP/2 Error: NO_ERROR']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
