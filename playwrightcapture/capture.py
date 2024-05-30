@@ -474,7 +474,7 @@ class Capture():
             if await page.locator("#didomi-notice-agree-button").is_visible():
                 await page.locator("#didomi-notice-agree-button").click(timeout=2000)
 
-        await page.add_locator_handler(page.locator(".didomi-popup-view").last, handler)
+        await page.add_locator_handler(page.locator(".didomi-popup-view").last, handler, times=1, no_wait_after=True)
         self.logger.info('Didomi handler added')
 
     async def __dialog_onetrust_clickthrough(self, page: Page) -> None:
@@ -484,7 +484,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('#onetrust-banner-sdk').last,
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('OT handler added')
 
@@ -495,7 +496,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('#hs-eu-cookie-confirmation').last,
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('HS handler added')
 
@@ -506,7 +508,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('#CybotCookiebotDialogBody'),
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('Cookiebot handler added')
 
@@ -522,7 +525,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.get_by_role("alertdialog").last,
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('alert dialog handler added')
 
@@ -541,7 +545,8 @@ class Capture():
                 self.logger.info('Consent window found, but no button to click through.')
         await page.add_locator_handler(
             page.get_by_role("dialog").last,
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('dialog handler added')
 
@@ -552,7 +557,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('.cmplz-show'),
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('Complianz handler added')
 
@@ -563,7 +569,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('.con-wizard'),
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('Yahoo handler added')
 
@@ -574,7 +581,8 @@ class Capture():
 
         await page.add_locator_handler(
             page.locator('#ppms_cm_popup_overlay'),
-            handler
+            handler,
+            times=1, no_wait_after=True
         )
         self.logger.info('Yahoo handler added')
 
