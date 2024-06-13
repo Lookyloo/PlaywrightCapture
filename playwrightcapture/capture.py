@@ -521,7 +521,7 @@ class Capture():
             elif await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").is_visible():
                 await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").click(timeout=1000)
             else:
-                self.logger.info('Consent window found, but no button to click through.')
+                self.logger.info('Consent window found (alert dialog), but no button to click through.')
 
         await page.add_locator_handler(
             page.get_by_role("alertdialog").last,
@@ -542,7 +542,7 @@ class Capture():
                 self.logger.info('Consent window found, clicking through.')
                 await page.get_by_test_id("uc-accept-all-button").click(timeout=2000)
             else:
-                self.logger.info('Consent window found, but no button to click through.')
+                self.logger.info('Consent window found (dialog), but no button to click through.')
         await page.add_locator_handler(
             page.get_by_role("dialog").last,
             handler,
@@ -722,7 +722,6 @@ class Capture():
                     await page.bring_to_front()
                     self.logger.debug('Page moved to front.')
                 except Error as e:
-                    self.should_retry = True
                     self.logger.warning('Page in a broken state.')
                     raise e
 
@@ -757,8 +756,11 @@ class Capture():
                     if allow_tracking:
                         await self._wait_for_random_timeout(page, 2)
                         # This event is required trigger the add_locator_handler
-                        if await page.locator("body").first.is_visible():
-                            await page.locator("body").first.click(button="right", timeout=2000)
+                        try:
+                            if await page.locator("body").first.is_visible():
+                                await page.locator("body").first.click(button="right", timeout=5000)
+                        except Exception as e:
+                            self.logger.warning(f'Could not find body: {e}')
 
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
@@ -920,7 +922,6 @@ class Capture():
                             'Navigation interrupted by another one',
                             'Navigation failed because page was closed!',
                             'Target page, context or browser has been closed',
-                            'Protocol error (Page.bringToFront): Not attached to an active page',
                             'Peer failed to perform TLS handshake: A packet with illegal or unsupported version was received.',
                             'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
                             'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
@@ -942,16 +943,18 @@ class Capture():
                 self.should_retry = True
             elif e.name in ['net::ERR_INVALID_AUTH_CREDENTIALS',
                             'net::ERR_BAD_SSL_CLIENT_AUTH_CERT',
-                            'net::ERR_UNEXPECTED_PROXY_AUTH']:
-                # No need to retry, the credentials are wrong/missing.
+                            'net::ERR_CERT_DATE_INVALID',
+                            'net::ERR_UNEXPECTED_PROXY_AUTH',
+                            'net::ERR_UNSAFE_PORT']:
+                # No need to retry, the credentials/certs are wrong/missing.
                 pass
-            elif e.name and any([msg in e.name for msg in ['is interrupted by another navigation to']]):
+            elif e.name and any([msg in e.name for msg in ['is interrupted by another navigation to', 'Page.bringToFront']]):
                 self.should_retry = True
             elif e.name and any([msg in e.name for msg in ['Error resolving', 'Could not connect to']]):
                 pass
             else:
                 # Unexpected ones
-                self.logger.exception(f'Something went poorly with {url}: {e.message}')
+                self.logger.exception(f'Something went poorly with {url}: "{e.name}" - {e.message}')
         except Exception as e:
             # we may get a non-playwright exception to.
             # The ones we try to handle here should be treated as if they were.
@@ -1194,8 +1197,11 @@ class Capture():
                 'net::ERR_EMPTY_RESPONSE',
                 'net::ERR_HTTP_RESPONSE_CODE_FAILURE',
                 'net::ERR_HTTP2_PROTOCOL_ERROR',
+                'net::ERR_INVALID_REDIRECT',
                 'net::ERR_INVALID_RESPONSE',
                 'net::ERR_NAME_NOT_RESOLVED',
+                'net::ERR_QUIC_PROTOCOL_ERROR',
+                'net::ERR_SOCKET_NOT_CONNECTED',
                 'net::ERR_SOCKS_CONNECTION_FAILED',
                 'net::ERR_SSL_KEY_USAGE_INCOMPATIBLE',
                 'net::ERR_SSL_PROTOCOL_ERROR',
