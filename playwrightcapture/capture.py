@@ -926,14 +926,16 @@ class Capture():
                             'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
                             'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
                             'Peer failed to perform TLS handshake: Error receiving data: Connection reset by peer',
-                            'Peer sent fatal TLS alert: The server name sent was not recognized',
+                            'Peer sent fatal TLS alert: Handshake failed',
                             'Peer sent fatal TLS alert: Internal error',
+                            'Peer sent fatal TLS alert: The server name sent was not recognized',
                             'Load cannot follow more than 20 redirections',
                             'Page crashed',
                             'Error receiving data: Connection reset by peer',
                             'Internal SOCKSv5 proxy server error.',
                             'Host unreachable through SOCKSv5 server.',
-                            'HTTP/2 Error: NO_ERROR']:
+                            'HTTP/2 Error: NO_ERROR',
+                            'HTTP/2 Error: PROTOCOL_ERROR']:
                 # Other errors, let's give it another shot
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
@@ -1200,7 +1202,9 @@ class Capture():
                 'net::ERR_INVALID_REDIRECT',
                 'net::ERR_INVALID_RESPONSE',
                 'net::ERR_NAME_NOT_RESOLVED',
+                'net::ERR_NETWORK_ACCESS_DENIED',
                 'net::ERR_QUIC_PROTOCOL_ERROR',
+                'net::ERR_RESPONSE_HEADERS_TRUNCATED',
                 'net::ERR_SOCKET_NOT_CONNECTED',
                 'net::ERR_SOCKS_CONNECTION_FAILED',
                 'net::ERR_SSL_KEY_USAGE_INCOMPATIBLE',
