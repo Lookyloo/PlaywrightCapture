@@ -584,7 +584,7 @@ class Capture():
             handler,
             times=1, no_wait_after=True
         )
-        self.logger.info('Yahoo handler added')
+        self.logger.info('Piwik handler added')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
