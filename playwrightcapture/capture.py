@@ -472,7 +472,7 @@ class Capture():
         async def handler() -> None:
             self.logger.debug('Didomi dialog found, clicking through.')
             if await page.locator("#didomi-notice-agree-button").is_visible():
-                await page.locator("#didomi-notice-agree-button").click(timeout=2000)
+                await page.locator("#didomi-notice-agree-button").click(timeout=30000)
 
         await page.add_locator_handler(page.locator(".didomi-popup-view").last, handler, times=1, no_wait_after=True)
         self.logger.info('Didomi handler added')
@@ -654,6 +654,7 @@ class Capture():
             capturing_sub = False
             try:
                 page = await self.context.new_page()
+                await page.clock.install()
             except Error as e:
                 self.logger.warning(f'The context is in a broken state: {e}')
                 self.should_retry = True
@@ -753,20 +754,31 @@ class Capture():
                 # check if we have anything on the page. If we don't, the page is not working properly.
                 if await self._failsafe_get_content(page):
                     self.logger.debug('Got rendered content')
-                    if allow_tracking:
-                        await self._wait_for_random_timeout(page, 2)
-                        # This event is required trigger the add_locator_handler
-                        try:
-                            if await page.locator("body").first.is_visible():
-                                await page.locator("body").first.click(button="right", timeout=5000)
-                        except Exception as e:
-                            self.logger.warning(f'Could not find body: {e}')
 
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
                     self.logger.debug('Moved mouse.')
-                    await self._wait_for_random_timeout(page, 2)
+                    await self._wait_for_random_timeout(page, 5)
                     self.logger.debug('Keep going after moving mouse.')
+
+                    # fast forward 30s
+                    await page.clock.run_for(10000)
+                    await page.clock.resume()
+                    await self._wait_for_random_timeout(page, 5)  # Wait 5 sec
+                    self.logger.warning('Moved time forward.')
+
+                    if allow_tracking:
+                        await self._wait_for_random_timeout(page, 10)
+                        # This event is required trigger the add_locator_handler
+                        try:
+                            if await page.locator("body").first.is_visible():
+                                self.logger.debug('Got body.')
+                                await page.locator("body").first.click(button="right",
+                                                                       timeout=5000,
+                                                                       delay=50)
+                                self.logger.debug('Clicked on body.')
+                        except Exception as e:
+                            self.logger.warning(f'Could not find body: {e}')
 
                     if parsed_url.fragment:
                         # We got a fragment, make sure we go to it and scroll only a little bit.
@@ -774,7 +786,8 @@ class Capture():
                         try:
                             await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
                             await self._wait_for_random_timeout(page, 2)
-                            await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
+                            async with timeout(3):
+                                await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                             self.logger.debug('Jumped to fragment.')
                         except PlaywrightTimeoutError as e:
                             self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
@@ -782,14 +795,20 @@ class Capture():
                             self.logger.warning(f'Target closed, unable to go to fragment "{fragment}": {e}')
                         except Error as e:
                             self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
+                        except TimeoutError:
+                            self.logger.debug('Unable to scroll due to timeout')
                     else:
                         # scroll more
                         try:
-                            # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes
-                            await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
+                            # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes.
+                            #   2024-07-08: Also, it sometimes get stuck.
+                            async with timeout(3):
+                                await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
                             self.logger.debug('Scrolled down.')
                         except Error as e:
                             self.logger.debug(f'Unable to scroll: {e}')
+                        except TimeoutError:
+                            self.logger.debug('Unable to scroll due to timeout')
 
                     await self._wait_for_random_timeout(page, 3)
                     self.logger.debug('Keep going after moving on page.')
@@ -802,7 +821,6 @@ class Capture():
                         self.logger.debug('PageDown on keyboard')
                     except Error as e:
                         self.logger.debug(f'Unable to use keyboard: {e}')
-
                 if self.wait_for_download > 0:
                     self.logger.info('Waiting for download to finish...')
                     await self._safe_wait(page, 20)
@@ -993,12 +1011,12 @@ class Capture():
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         self.logger.debug("Capturing a screenshot of the full page.")
         try:
-            return await page.screenshot(full_page=True, timeout=5000)
+            return await page.screenshot(full_page=True, timeout=10000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
 
         try:
-            return await page.screenshot(full_page=True, scale="css", timeout=5000)
+            return await page.screenshot(full_page=True, scale="css", timeout=30000)
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
 
