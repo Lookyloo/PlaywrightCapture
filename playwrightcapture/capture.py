@@ -13,10 +13,11 @@ import sys
 import time
 
 from base64 import b64decode
+from dataclasses import dataclass
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
-from typing import Any, TypedDict, Literal, TYPE_CHECKING, MutableMapping
+from typing import Any, TypedDict, Literal, TYPE_CHECKING, MutableMapping, Generator
 from urllib.parse import urlparse, unquote, urljoin
 from zipfile import ZipFile
 
@@ -30,7 +31,7 @@ from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_async  # type: ignore[import-untyped]
+from playwright_stealth import stealth_async, StealthConfig  # type: ignore[import-untyped]
 from puremagic import PureError, from_string  # type: ignore[import-untyped]
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -93,6 +94,31 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
         if self.extra:
             return '[{}] {}'.format(self.extra['uuid'], msg), kwargs
         return msg, kwargs
+
+
+@dataclass
+class PCStealthConfig(StealthConfig):  # type: ignore[misc]
+
+    @property
+    def enabled_scripts(self) -> Generator[str, None, None]:
+        self.webdriver = True
+        self.webgl_vendor = True
+        self.chrome_app = True
+        self.chrome_csi = True
+        self.chrome_load_times = True
+        self.chrome_runtime = True
+        self.iframe_content_window = True
+        self.media_codecs = True
+        self.navigator_hardware_concurrency = 4
+        self.navigator_languages = False  # Causes issue
+        self.navigator_permissions = True
+        self.navigator_platform = True
+        self.navigator_plugins = True
+        self.navigator_user_agent = False  # Causes issues
+        self.navigator_vendor = False  # Causes issues
+        self.outerdimensions = True
+        self.hairline = True
+        yield from super().enabled_scripts
 
 
 class Capture():
@@ -171,7 +197,8 @@ class Capture():
             raise UnknownPlaywrightBrowser(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
 
         self.browser = await self.playwright[self.browser_name].launch(
-            proxy=self.proxy if self.proxy else None
+            proxy=self.proxy if self.proxy else None,
+            # headless=False
         )
 
         # Set of URLs that were captured in that context
@@ -385,6 +412,7 @@ class Capture():
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
+            bypass_csp=True,
             http_credentials=self.http_credentials if self.http_credentials else None,
             user_agent=self.user_agent if self.user_agent else device_context_settings.pop('user_agent', None),
             locale=self.locale if self.locale else None,
@@ -672,7 +700,9 @@ class Capture():
                 await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_clickthrough(page)
 
-            await stealth_async(page)
+            await stealth_async(page, PCStealthConfig())
+            # await stealth_async(page)
+
             page.set_default_timeout((self._capture_timeout - 2) * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
             page.on("requestfinished", store_request)
@@ -719,6 +749,7 @@ class Capture():
                 else:
                     raise initial_error
             else:
+                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
                 try:
                     await page.bring_to_front()
                     self.logger.debug('Page moved to front.')
@@ -761,14 +792,8 @@ class Capture():
                     await self._wait_for_random_timeout(page, 5)
                     self.logger.debug('Keep going after moving mouse.')
 
-                    # fast forward 30s
-                    await page.clock.run_for(10000)
-                    await page.clock.resume()
-                    await self._wait_for_random_timeout(page, 5)  # Wait 5 sec
-                    self.logger.warning('Moved time forward.')
-
                     if allow_tracking:
-                        await self._wait_for_random_timeout(page, 10)
+                        await self._wait_for_random_timeout(page, 5)
                         # This event is required trigger the add_locator_handler
                         try:
                             if await page.locator("body").first.is_visible():
@@ -779,6 +804,12 @@ class Capture():
                                 self.logger.debug('Clicked on body.')
                         except Exception as e:
                             self.logger.warning(f'Could not find body: {e}')
+
+                    # fast forward 30s
+                    await page.clock.run_for(10000)
+                    await page.clock.resume()
+                    await self._wait_for_random_timeout(page, 5)  # Wait 5 sec
+                    self.logger.warning('Moved time forward.')
 
                     if parsed_url.fragment:
                         # We got a fragment, make sure we go to it and scroll only a little bit.
