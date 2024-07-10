@@ -805,12 +805,6 @@ class Capture():
                         except Exception as e:
                             self.logger.warning(f'Could not find body: {e}')
 
-                    # fast forward 30s
-                    await page.clock.run_for(10000)
-                    await page.clock.resume()
-                    await self._wait_for_random_timeout(page, 5)  # Wait 5 sec
-                    self.logger.warning('Moved time forward.')
-
                     if parsed_url.fragment:
                         # We got a fragment, make sure we go to it and scroll only a little bit.
                         fragment = unquote(parsed_url.fragment)
@@ -869,6 +863,10 @@ class Capture():
                                 filename, file_content = f_details
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
+
+                # fast forward 30s
+                await page.clock.run_for("30")
+                self.logger.debug('Moved time forward.')
 
                 self.logger.debug('Done with instrumentation, waiting for network idle.')
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
