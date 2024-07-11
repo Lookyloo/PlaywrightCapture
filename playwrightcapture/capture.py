@@ -32,7 +32,7 @@ from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import stealth_async, StealthConfig  # type: ignore[import-untyped]
-from puremagic import PureError, from_string  # type: ignore[import-untyped]
+from puremagic import PureError, from_string
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
@@ -683,6 +683,7 @@ class Capture():
             try:
                 page = await self.context.new_page()
                 await page.clock.install()
+                page.on("dialog", lambda dialog: dialog.accept())
             except Error as e:
                 self.logger.warning(f'The context is in a broken state: {e}')
                 self.should_retry = True

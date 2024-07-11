@@ -29,7 +29,7 @@ pytz = {"version" = "^2024.1", python = "<3.9"}
 tzdata = "^2024.1"
 playwright-stealth = "^1.0.6"
 setuptools = "^70.3.0"
-puremagic = "^1.25"
+puremagic = "^1.26"
 async-timeout = {version = "^4.0.3", python = "<3.11"}
 aiohttp = {extras = ["speedups"], version = "^3.9.5"}
 aiohttp-socks = "^0.8.4"
