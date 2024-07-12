@@ -682,8 +682,7 @@ class Capture():
             capturing_sub = False
             try:
                 page = await self.context.new_page()
-                await page.clock.install()
-                page.on("dialog", lambda dialog: dialog.accept())
+                # await page.clock.install()
             except Error as e:
                 self.logger.warning(f'The context is in a broken state: {e}')
                 self.should_retry = True
@@ -707,6 +706,7 @@ class Capture():
             page.set_default_timeout((self._capture_timeout - 2) * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
             page.on("requestfinished", store_request)
+            page.on("dialog", lambda dialog: dialog.accept())
 
         try:
             # Parse the URL. If there is a fragment, we need to scroll to it manually
@@ -762,30 +762,30 @@ class Capture():
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
                 self.logger.debug('Start instrumentation.')
 
-                # ==== recaptcha
-                # Same technique as: https://github.com/NikolaiT/uncaptcha3
-                if CAN_SOLVE_CAPTCHA:
-                    try:
-                        if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=3000)
-                                and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=2000)):
-                            self.logger.info('Found a captcha')
-                            await self._recaptcha_solver(page)
-                    except PlaywrightTimeoutError as e:
-                        self.logger.info(f'Captcha on {url} is not ready: {e}')
-                    except TargetClosedError as e:
-                        self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
-                    except Error as e:
-                        self.logger.warning(f'Error while resolving captcha on {url}: {e}')
-                    except Exception as e:
-                        self.logger.exception(f'General error with captcha solving on {url}: {e}')
-                # ======
-                # NOTE: testing
-                # await self.__cloudflare_bypass_attempt(page)
-                self.logger.debug('Done with captcha.')
-
                 # check if we have anything on the page. If we don't, the page is not working properly.
                 if await self._failsafe_get_content(page):
                     self.logger.debug('Got rendered content')
+
+                    # ==== recaptcha
+                    # Same technique as: https://github.com/NikolaiT/uncaptcha3
+                    if CAN_SOLVE_CAPTCHA:
+                        try:
+                            if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=3000)
+                                    and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=2000)):
+                                self.logger.info('Found a captcha')
+                                await self._recaptcha_solver(page)
+                        except PlaywrightTimeoutError as e:
+                            self.logger.info(f'Captcha on {url} is not ready: {e}')
+                        except TargetClosedError as e:
+                            self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
+                        except Error as e:
+                            self.logger.warning(f'Error while resolving captcha on {url}: {e}')
+                        except Exception as e:
+                            self.logger.exception(f'General error with captcha solving on {url}: {e}')
+                    # ======
+                    # NOTE: testing
+                    # await self.__cloudflare_bypass_attempt(page)
+                    self.logger.debug('Done with captcha.')
 
                     # move mouse
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
@@ -866,8 +866,12 @@ class Capture():
                         to_return["downloaded_file"] = mem_zip.getvalue()
 
                 # fast forward 30s
-                await page.clock.run_for("30")
-                self.logger.debug('Moved time forward.')
+                # try:
+                #    async with timeout(3):
+                #        await page.clock.run_for("47")
+                #        self.logger.debug('Moved time forward.')
+                # except TimeoutError:
+                #    self.logger.warning('Unable to move time forward.')
 
                 self.logger.debug('Done with instrumentation, waiting for network idle.')
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
@@ -1078,8 +1082,9 @@ class Capture():
         tries = 3
         while tries:
             try:
-                return await page.content()
-            except Error:
+                async with timeout(30):
+                    return await page.content()
+            except (Error, TimeoutError):
                 self.logger.debug('Unable to get page content, trying again.')
                 tries -= 1
                 await self._wait_for_random_timeout(page, 1)
@@ -1224,6 +1229,11 @@ class Capture():
             # The format changed in Playwright 1.43.0, the name of the method that failed is set before the exception itself.
             if ': ' in name:
                 _, name = name.split(': ', maxsplit=1)
+            exception._name = name.strip()
+        else:
+            # The format changed in Playwright 1.43.0, the name of the method that failed is set before the exception itself.
+            if ': ' in exception.message:
+                _, name = exception.message.split(': ', maxsplit=1)
             exception._name = name.strip()
 
     def _exception_is_network_error(self, exception: Error) -> bool:
