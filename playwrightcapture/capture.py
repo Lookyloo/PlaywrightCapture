@@ -165,10 +165,15 @@ class Capture():
         if proxy:
             if isinstance(proxy, str):
                 self.proxy = {'server': proxy}
-            else:
+            elif isinstance(proxy, dict):
                 self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
                               'username': proxy.get('username', ''),
                               'password': proxy.get('password', '')}
+            elif isinstance(proxy, int):
+                # This is clearly a mistake, just ignoring it
+                self.logger.warning('Proxy is an integer, this is a mistake, ignoring it.')
+            else:
+                raise InvalidPlaywrightParameter(f'Invalid proxy parameter: "{proxy}" ({type(proxy)})')
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
