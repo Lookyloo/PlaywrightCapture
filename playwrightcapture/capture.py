@@ -817,7 +817,7 @@ class Capture():
                         try:
                             await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
                             await self._wait_for_random_timeout(page, 2)
-                            async with timeout(3):
+                            async with timeout(5):
                                 await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                             self.logger.debug('Jumped to fragment.')
                         except PlaywrightTimeoutError as e:
@@ -826,20 +826,24 @@ class Capture():
                             self.logger.warning(f'Target closed, unable to go to fragment "{fragment}": {e}')
                         except Error as e:
                             self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
-                        except TimeoutError:
+                        except (asyncio.TimeoutError, TimeoutError):
                             self.logger.debug('Unable to scroll due to timeout')
+                        except (asyncio.CancelledError):
+                            self.logger.debug('Unable to scroll due to timeout, call canceled')
                     else:
                         # scroll more
                         try:
                             # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes.
                             #   2024-07-08: Also, it sometimes get stuck.
-                            async with timeout(3):
+                            async with timeout(5):
                                 await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
                             self.logger.debug('Scrolled down.')
                         except Error as e:
                             self.logger.debug(f'Unable to scroll: {e}')
-                        except TimeoutError:
+                        except (TimeoutError, asyncio.TimeoutError):
                             self.logger.debug('Unable to scroll due to timeout')
+                        except (asyncio.CancelledError):
+                            self.logger.debug('Unable to scroll due to timeout, call canceled')
 
                     await self._wait_for_random_timeout(page, 3)
                     self.logger.debug('Keep going after moving on page.')
@@ -875,7 +879,7 @@ class Capture():
                 #    async with timeout(3):
                 #        await page.clock.run_for("47")
                 #        self.logger.debug('Moved time forward.')
-                # except TimeoutError:
+                # except (TimeoutError, asyncio.TimeoutError):
                 #    self.logger.warning('Unable to move time forward.')
 
                 self.logger.debug('Done with instrumentation, waiting for network idle.')
@@ -924,7 +928,7 @@ class Capture():
                                         rendered_hostname_only=rendered_hostname_only,
                                         max_depth_capture_time=max_capture_time)
                                     to_return['children'].append(child_capture)  # type: ignore[union-attr]
-                            except (TimeoutError, asyncio.exceptions.TimeoutError, asyncio.TimeoutError):
+                            except (TimeoutError, asyncio.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                                 consecutive_errors += 1
                             except Exception as e:
@@ -951,6 +955,9 @@ class Capture():
 
         except PlaywrightTimeoutError as e:
             to_return['error'] = f"The capture took too long - {e.message}"
+            self.should_retry = True
+        except (asyncio.TimeoutError, TimeoutError):
+            to_return['error'] = "Something in the capture took too long"
             self.should_retry = True
         except TargetClosedError as e:
             to_return['error'] = f"The target was closed - {e}"
