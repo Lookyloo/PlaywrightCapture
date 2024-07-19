@@ -339,19 +339,10 @@ class Capture():
         return self._headers
 
     @headers.setter
-    def headers(self, headers: str | dict[str, str] | None) -> None:
+    def headers(self, headers: dict[str, str] | None) -> None:
         if not headers:
             return
-        if isinstance(headers, str):
-            new_headers: dict[str, str] = {}
-            for header_line in headers.splitlines():
-                if header_line and ':' in header_line:
-                    splitted = header_line.split(':', 1)
-                    if splitted and len(splitted) == 2:
-                        header, h_value = splitted
-                        if header.strip() and h_value.strip():
-                            new_headers[header.strip()] = h_value.strip()
-        elif isinstance(headers, dict):
+        if isinstance(headers, dict):
             # Check if they are valid
             new_headers = {name.strip(): value.strip() for name, value in headers.items() if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()}
             if new_headers != headers:
@@ -1096,7 +1087,7 @@ class Capture():
             try:
                 async with timeout(30):
                     return await page.content()
-            except (Error, TimeoutError):
+            except (Error, TimeoutError, asyncio.TimeoutError):
                 self.logger.debug('Unable to get page content, trying again.')
                 tries -= 1
                 await self._wait_for_random_timeout(page, 1)
