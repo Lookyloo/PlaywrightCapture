@@ -404,17 +404,21 @@ class Capture():
         device_context_settings = {}
         if self.device_name:
             device_context_settings = self.playwright.devices[self.device_name]
+            # We need to make sure the device_context_settings dict doesn't contains
+            # keys that are set by default in the context creation
+            ua = self.user_agent if self.user_agent else device_context_settings.pop('user_agent', None)
+            vp = self.viewport if self.viewport else device_context_settings.pop('viewport', self._default_viewport)
 
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
             bypass_csp=True,
             http_credentials=self.http_credentials if self.http_credentials else None,
-            user_agent=self.user_agent if self.user_agent else device_context_settings.pop('user_agent', None),
+            user_agent=ua,
             locale=self.locale if self.locale else None,
             timezone_id=self.timezone_id if self.timezone_id else None,
             color_scheme=self.color_scheme if self.color_scheme else None,
-            viewport=self.viewport if self.viewport else device_context_settings.pop('viewport', self._default_viewport),
+            viewport=vp,
             # For debug only
             # record_video_dir='./videos/',
             **device_context_settings
