@@ -411,6 +411,9 @@ class Capture():
             if context_vp := device_context_settings.pop('viewport', self._default_viewport):
                 # Always true, but we also always want to pop it.
                 vp = self.viewport if self.viewport else context_vp
+        else:
+            ua = self.user_agent
+            vp = self.viewport
 
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
