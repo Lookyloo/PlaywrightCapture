@@ -406,8 +406,11 @@ class Capture():
             device_context_settings = self.playwright.devices[self.device_name]
             # We need to make sure the device_context_settings dict doesn't contains
             # keys that are set by default in the context creation
-            ua = self.user_agent if self.user_agent else device_context_settings.pop('user_agent', None)
-            vp = self.viewport if self.viewport else device_context_settings.pop('viewport', self._default_viewport)
+            if context_ua := device_context_settings.pop('user_agent', None):
+                ua = self.user_agent if self.user_agent else context_ua
+            if context_vp := device_context_settings.pop('viewport', self._default_viewport):
+                # Always true, but we also always want to pop it.
+                vp = self.viewport if self.viewport else context_vp
 
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
