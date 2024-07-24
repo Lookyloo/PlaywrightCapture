@@ -18,7 +18,7 @@ from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, TypedDict, Literal, TYPE_CHECKING, MutableMapping, Generator
-from urllib.parse import urlparse, unquote, urljoin
+from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
 
 import aiohttp
@@ -164,7 +164,7 @@ class Capture():
         self.proxy: ProxySettings = {}
         if proxy:
             if isinstance(proxy, str):
-                self.proxy = {'server': proxy}
+                self.proxy = self.__prepare_proxy_playwright(proxy)
             elif isinstance(proxy, dict):
                 self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
                               'username': proxy.get('username', ''),
@@ -186,6 +186,19 @@ class Capture():
         self._timezone_id: str = ''
         self._locale: str = ''
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
+
+    def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
+        splitted = urlsplit(proxy)
+        if splitted.username and splitted.password:
+            return {'username': splitted.username, 'password': splitted.password,
+                    'server': urlunsplit((splitted.scheme, f'{splitted.hostname}:{splitted.port}', splitted.path, splitted.query, splitted.fragment))}
+        return {'server': proxy}
+
+    def __prepare_proxy_aiohttp(self, proxy: ProxySettings) -> str:
+        if 'username' in proxy and 'password' in proxy:
+            splitted = urlsplit(proxy['server'])
+            return urlunsplit((splitted.scheme, f'{proxy["username"]}:{proxy["password"]}@{splitted.netloc}', splitted.path, splitted.query, splitted.fragment))
+        return proxy['server']
 
     async def __aenter__(self) -> Capture:
         '''Launch the browser'''
@@ -1395,9 +1408,9 @@ class Capture():
         Method inspired by https://github.com/ail-project/ail-framework/blob/master/bin/lib/crawlers.py
         """
         connector = None
-        if self.proxy and self.proxy.get('server'):
+        if self.proxy:
             # NOTE 2024-05-17: switch to async to fetch, the lib uses socks5h by default
-            connector = ProxyConnector.from_url(self.proxy['server'])
+            connector = ProxyConnector.from_url(self.__prepare_proxy_aiohttp(self.proxy))
 
         extracted_favicons = self.__extract_favicons(rendered_content)
         if not extracted_favicons:
