@@ -96,28 +96,40 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
         return msg, kwargs
 
 
+# good test pages:
+# https://bot.incolumitas.com/
+# https://fingerprintjs.github.io/BotD/main/
+
 @dataclass
 class PCStealthConfig(StealthConfig):  # type: ignore[misc]
 
     @property
     def enabled_scripts(self) -> Generator[str, None, None]:
-        self.webdriver = True
-        self.webgl_vendor = True
         self.chrome_app = True
         self.chrome_csi = True
-        self.chrome_load_times = True
         self.chrome_runtime = True
+        self.chrome_load_times = True
+        self.navigator_plugins = True
+        self.hairline = True
         self.iframe_content_window = True
         self.media_codecs = True
+
+        # permissions are handled directly in playwright
+        self.navigator_permissions = False
+        # Platform is correct now
+        self.navigator_platform = False
+        # probably useless, but it will fallback to 4 regardless
         self.navigator_hardware_concurrency = 4
+        # Webgl vendor is correct now
+        self.webgl_vendor = False
+        # Set by the viewport
+        self.outerdimensions = False
+
+        # Not working with Playwright 1.45+
         self.navigator_languages = False  # Causes issue
-        self.navigator_permissions = True
-        self.navigator_platform = True
-        self.navigator_plugins = True
         self.navigator_user_agent = False  # Causes issues
         self.navigator_vendor = False  # Causes issues
-        self.outerdimensions = True
-        self.hairline = True
+
         yield from super().enabled_scripts
 
 
@@ -184,7 +196,7 @@ class Capture():
         self._viewport: ViewportSize | None = None
         self._user_agent: str = ''
         self._timezone_id: str = ''
-        self._locale: str = ''
+        self._locale: str = 'en-US'
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
 
     def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
@@ -462,21 +474,22 @@ class Capture():
         # NOTE: Which perms are supported by which browsers varies
         # See https://github.com/microsoft/playwright/issues/16577
         chromium_permissions = [
-            'geolocation',
-            'midi',
-            'midi-sysex',
-            'notifications',
-            'camera',
-            'microphone',
-            'background-sync',
-            'ambient-light-sensor',
             'accelerometer',
-            'gyroscope',
-            'magnetometer',
             'accessibility-events',
+            'ambient-light-sensor',
+            'background-sync',
+            'camera',
             'clipboard-read',
             'clipboard-write',
-            'payment-handler'
+            'geolocation',
+            'gyroscope',
+            'magnetometer',
+            'microphone',
+            'midi-sysex',
+            'midi',
+            'notifications',
+            'payment-handler',
+            'storage-access'
         ]
 
         firefox_permissions = ['geolocation', 'notifications']
@@ -720,7 +733,6 @@ class Capture():
                 await self.__dialog_clickthrough(page)
 
             await stealth_async(page, PCStealthConfig())
-            # await stealth_async(page)
 
             page.set_default_timeout((self._capture_timeout - 2) * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
@@ -799,6 +811,8 @@ class Capture():
                             self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
                         except Error as e:
                             self.logger.warning(f'Error while resolving captcha on {url}: {e}')
+                        except (TimeoutError, asyncio.TimeoutError) as e:
+                            self.logger.warning(f'[Timeout] Error while resolving captcha on {url}: {e}')
                         except Exception as e:
                             self.logger.exception(f'General error with captcha solving on {url}: {e}')
                     # ======
@@ -905,8 +919,13 @@ class Capture():
                     to_return['html'] = content
 
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
-                    got_favicons = True
+                    try:
+                        to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
+                        got_favicons = True
+                    except (TimeoutError, asyncio.TimeoutError) as e:
+                        self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
+                    except Exception as e:
+                        self.logger.warning(f'Unable to get favicons: {e}')
 
                 to_return['last_redirected_url'] = page.url
                 to_return['png'] = await self._failsafe_get_screenshot(page)
@@ -1209,7 +1228,8 @@ class Capture():
         if self.proxy and self.proxy.get('server'):
             connector = ProxyConnector.from_url(self.proxy['server'])
 
-        async with aiohttp.ClientSession(connector=connector) as session:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             while True:
                 try:
                     href = await main_frame.get_by_role("link", name="Alternatively, download audio as MP3").get_attribute("href")
@@ -1219,7 +1239,7 @@ class Capture():
                 if not href:
                     self.logger.warning('Unable to find download link for captcha.')
                     return False
-                async with session.get(href, timeout=10, ssl=False) as response:
+                async with session.get(href, ssl=False) as response:
                     response.raise_for_status()
                     mp3_content = await response.read()
                 with NamedTemporaryFile() as mp3_file, NamedTemporaryFile() as wav_file:
@@ -1417,7 +1437,8 @@ class Capture():
             return set()
         to_fetch, to_return = extracted_favicons
         to_fetch.add('/favicon.ico')
-        async with aiohttp.ClientSession(connector=connector) as session:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             session.headers['user-agent'] = self.user_agent
             for u in to_fetch:
                 try:
@@ -1427,7 +1448,7 @@ class Capture():
                     if url_to_fetch in self._requests:
                         favicon = self._requests[url_to_fetch]
                     if not favicon:
-                        async with session.get(url_to_fetch, timeout=5, ssl=False) as favicon_response:
+                        async with session.get(url_to_fetch, ssl=False) as favicon_response:
                             favicon_response.raise_for_status()
                             favicon = await favicon_response.read()
                     if favicon:
