@@ -648,6 +648,24 @@ class Capture():
         )
         self.logger.info('Piwik handler added')
 
+    async def __frame_consent(self, frame: Frame) -> bool:
+        """Search & Click content in iframes. Cannot easily use the locator handler for this without having many many handlers.
+        And the iframes don't have a title or a role to easily identify them so we just try with generic locators that vary by language."""
+        got_button: bool = False
+        if await frame.get_by_label("Alle akzeptieren").is_visible():
+            got_button = True
+            await frame.get_by_label("Alle akzeptieren").click(timeout=2000)
+        elif await frame.get_by_label("Accept & continue").is_visible():
+            got_button = True
+            await frame.get_by_label("Accept & continue").click(timeout=2000)
+        elif await frame.get_by_label("Accepter et continuer").is_visible():
+            got_button = True
+            await frame.get_by_label("Accepter et continuer").click(timeout=2000)
+        elif await frame.get_by_label("Accepteer").is_visible():
+            got_button = True
+            await frame.get_by_label("Accepteer").click(timeout=2000)
+        return got_button
+
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
                            page: Page | None=None, depth: int=0,
@@ -913,8 +931,19 @@ class Capture():
                 #    self.logger.warning('Unable to move time forward.')
 
                 self.logger.debug('Done with instrumentation, waiting for network idle.')
+                if allow_tracking:
+                    self.logger.debug('Check iFrames for button')
+                    for frame in page.frames:
+                        frame_title = await frame.title()
+                        self.logger.debug(f'Check button on {frame_title}')
+                        if await self.__frame_consent(frame):
+                            self.logger.debug(f'Got button on {frame_title}')
+                            await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
+                    self.logger.debug('Done with iFrames.')
+
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
                 await self._safe_wait(page)
+
                 self.logger.debug('Done with instrumentation, done with waiting.')
 
                 if content := await self._failsafe_get_content(page):
