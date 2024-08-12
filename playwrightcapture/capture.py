@@ -601,6 +601,8 @@ class Capture():
             elif await page.get_by_test_id("uc-accept-all-button").is_visible():
                 self.logger.info('Consent window found, clicking through.')
                 await page.get_by_test_id("uc-accept-all-button").click(timeout=2000)
+            elif await page.locator('#axeptio_btn_acceptAll').is_visible():
+                await page.locator('#axeptio_btn_acceptAll').click(timeout=2000)
             else:
                 self.logger.info('Consent window found (dialog), but no button to click through.')
         await page.add_locator_handler(
