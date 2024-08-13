@@ -532,7 +532,7 @@ class Capture():
         async def handler() -> None:
             self.logger.debug('Didomi dialog found, clicking through.')
             if await page.locator("#didomi-notice-agree-button").is_visible():
-                await page.locator("#didomi-notice-agree-button").click(timeout=30000)
+                await page.locator("#didomi-notice-agree-button").click(timeout=3000)
 
         await page.add_locator_handler(page.locator(".didomi-popup-view").last, handler, times=1, no_wait_after=True)
         self.logger.info('Didomi handler added')
@@ -575,10 +575,7 @@ class Capture():
 
     async def __dialog_alert_dialog_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
-            if await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").is_visible():
-                self.logger.info('Consent window found, clicking through.')
-                await page.frame_locator("iframe[title=\"Consent window\"]").locator("button.button__acceptAll").click(timeout=2000)
-            elif await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").is_visible():
+            if await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").is_visible():
                 await page.locator('#onetrust-button-group').locator("#onetrust-accept-btn-handler").click(timeout=1000)
             else:
                 self.logger.info('Consent window found (alert dialog), but no button to click through.')
@@ -603,6 +600,9 @@ class Capture():
                 await page.get_by_test_id("uc-accept-all-button").click(timeout=2000)
             elif await page.locator('#axeptio_btn_acceptAll').is_visible():
                 await page.locator('#axeptio_btn_acceptAll').click(timeout=2000)
+            elif await page.locator('.fc-cta-consent').is_visible():
+                # https://developers.google.com/funding-choices/fc-api-docs
+                await page.locator('.fc-cta-consent').click(timeout=2000)
             else:
                 self.logger.info('Consent window found (dialog), but no button to click through.')
         await page.add_locator_handler(
@@ -651,20 +651,63 @@ class Capture():
     async def __frame_consent(self, frame: Frame) -> bool:
         """Search & Click content in iframes. Cannot easily use the locator handler for this without having many many handlers.
         And the iframes don't have a title or a role to easily identify them so we just try with generic locators that vary by language."""
+
+        labels_to_click: list[str] = [
+            # German
+            "Alle akzeptieren",
+            "Zustimmen & weiter",
+            # French
+            "Accepter et continuer",
+            "Tout accepter",
+            "Accepter",
+            "Accepter les cookies",
+            # English
+            "Accept & continue",
+            "Accept all",
+            # Dutch
+            "Accepteer",
+            # Spanish
+            "Aceptar todo",
+            # Italian
+            "Accetta tutto",
+            # Arabic
+            "قبول الكل",
+            # Portuguese
+            "Aceitar tudo",
+            # Polish
+            "Akceptuj wszystko",
+        ]
+
         got_button: bool = False
-        if await frame.get_by_label("Alle akzeptieren").is_visible():
-            got_button = True
-            await frame.get_by_label("Alle akzeptieren").click(timeout=2000)
-        elif await frame.get_by_label("Accept & continue").is_visible():
-            got_button = True
-            await frame.get_by_label("Accept & continue").click(timeout=2000)
-        elif await frame.get_by_label("Accepter et continuer").is_visible():
-            got_button = True
-            await frame.get_by_label("Accepter et continuer").click(timeout=2000)
-        elif await frame.get_by_label("Accepteer").is_visible():
-            got_button = True
-            await frame.get_by_label("Accepteer").click(timeout=2000)
+        try:
+            if await frame.locator("button.button__acceptAll").is_visible():
+                self.logger.info('Consent window found, clicking through.')
+                got_button = True
+                await frame.locator("button.button__acceptAll").click(timeout=2000)
+            for label in labels_to_click:
+                if await frame.get_by_label(label).is_visible():
+                    got_button = True
+                    self.logger.debug(f'Got button by label on frame: {label}')
+                    await frame.get_by_label(label).click(timeout=2000)
+                    break
+                if await frame.get_by_role("button", name=label).is_visible():
+                    got_button = True
+                    self.logger.debug(f'Got button by role on frame: {label}')
+                    await frame.get_by_role("button", name=label).click(timeout=2000)
+                    break
+        except Exception as e:
+            self.logger.info(f'Issue with frame consent: {e}')
         return got_button
+
+    async def _move_time_forward(self, page: Page, time: int) -> None:
+        time = max(time, 7)
+        try:
+            async with timeout(3):
+                await page.clock.run_for(random.randint((time - 5) * 1000,
+                                                        (time + 5) * 1000))
+                self.logger.debug(f'Moved time forward by ~{time}s.')
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.warning('Unable to move time forward.')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
@@ -734,7 +777,7 @@ class Capture():
             capturing_sub = False
             try:
                 page = await self.context.new_page()
-                # await page.clock.install()
+                await page.clock.install()
             except Error as e:
                 self.logger.warning(f'The context is in a broken state: {e}')
                 self.should_retry = True
@@ -859,6 +902,21 @@ class Capture():
                         except Exception as e:
                             self.logger.warning(f'Could not find body: {e}')
 
+                        await self._wait_for_random_timeout(page, 5)
+                        # triggering clicks on very generic frames is sometimes impossible, using button and common language.
+                        self.logger.debug('Check other frames for button')
+                        for frame in page.frames:
+                            if await self.__frame_consent(frame):
+                                await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
+                        self.logger.debug('Done with frames.')
+
+                        self.logger.debug('Check main frame for button')
+                        if await self.__frame_consent(page.main_frame):
+                            self.logger.debug('Got button on main frame')
+                            await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
+
+                    await self._move_time_forward(page, 10)
+
                     if parsed_url.fragment:
                         # We got a fragment, make sure we go to it and scroll only a little bit.
                         fragment = unquote(parsed_url.fragment)
@@ -922,25 +980,10 @@ class Capture():
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
 
-                # fast forward 30s
-                # try:
-                #    async with timeout(3):
-                #        await page.clock.run_for("47")
-                #        self.logger.debug('Moved time forward.')
-                # except (TimeoutError, asyncio.TimeoutError):
-                #    self.logger.warning('Unable to move time forward.')
+                # fast forward ~30s
+                await self._move_time_forward(page, 30)
 
                 self.logger.debug('Done with instrumentation, waiting for network idle.')
-                if allow_tracking:
-                    self.logger.debug('Check iFrames for button')
-                    for frame in page.frames:
-                        frame_title = await frame.title()
-                        self.logger.debug(f'Check button on {frame_title}')
-                        if await self.__frame_consent(frame):
-                            self.logger.debug(f'Got button on {frame_title}')
-                            await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
-                    self.logger.debug('Done with iFrames.')
-
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
                 await self._safe_wait(page)
 
