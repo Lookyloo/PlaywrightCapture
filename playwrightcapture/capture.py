@@ -636,6 +636,28 @@ class Capture():
         )
         self.logger.info('Yahoo handler added')
 
+    async def __dialog_tarteaucitron_clickthrough(self, page: Page) -> None:
+        # https://github.com/AmauriC/tarteaucitron.js/
+        async def handler() -> None:
+            if await page.locator('#tarteaucitronAlertBig').locator('button.tarteaucitronAllow').is_visible():
+                self.logger.debug('Got TarteAuCitron big , clicking through.')
+                await page.locator('#tarteaucitronAlertBig').locator("button.tarteaucitronAllow").click(timeout=2000)
+            elif await page.locator('#tarteaucitronAlertSmall').locator('button.tarteaucitronAllow').is_visible():
+                self.logger.debug('Got TarteAuCitron small, clicking through.')
+                await page.locator('#tarteaucitronAlertSmall').locator("button.tarteaucitronAllow").click(timeout=2000)
+
+        await page.add_locator_handler(
+            page.locator('#tarteaucitronAlertBig'),
+            handler,
+            times=1, no_wait_after=True
+        )
+        await page.add_locator_handler(
+            page.locator('#tarteaucitronAlertSmall'),
+            handler,
+            times=1, no_wait_after=True
+        )
+        self.logger.info('TarteAuCitron handler added')
+
     async def __dialog_ppms_clickthrough(self, page: Page) -> None:
         async def handler() -> None:
             if await page.locator('.ppms_cm_popup_overlay').locator("button.ppms_cm_agree-to-all").is_visible():
@@ -664,6 +686,7 @@ class Capture():
             # English
             "Accept & continue",
             "Accept all",
+            "Accept",
             # Dutch
             "Accepteer",
             # Spanish
@@ -794,6 +817,7 @@ class Capture():
                 await self.__dialog_ppms_clickthrough(page)
                 await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_clickthrough(page)
+                await self.__dialog_tarteaucitron_clickthrough(page)
 
             await stealth_async(page, PCStealthConfig())
 
