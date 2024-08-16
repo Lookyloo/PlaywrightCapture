@@ -683,10 +683,12 @@ class Capture():
             "Tout accepter",
             "Accepter",
             "Accepter les cookies",
+            "Autoriser",
             # English
             "Accept & continue",
             "Accept all",
             "Accept",
+            "Agree and close",
             # Dutch
             "Accepteer",
             # Spanish
@@ -703,21 +705,35 @@ class Capture():
 
         got_button: bool = False
         try:
-            if await frame.locator("button.button__acceptAll").is_visible():
-                self.logger.info('Consent window found, clicking through.')
-                got_button = True
-                await frame.locator("button.button__acceptAll").click(timeout=2000)
+            try:
+                async with timeout(5):
+                    if await frame.locator("button.button__acceptAll").is_visible():
+                        self.logger.info('Consent window found, clicking through.')
+                        got_button = True
+                        await frame.locator("button.button__acceptAll").click(timeout=2000)
+            except (TimeoutError, asyncio.TimeoutError) as e:
+                self.logger.warning(f'Frame consent timeout: {e}')
+
             for label in labels_to_click:
-                if await frame.get_by_label(label).is_visible():
-                    got_button = True
-                    self.logger.debug(f'Got button by label on frame: {label}')
-                    await frame.get_by_label(label).click(timeout=2000)
-                    break
-                if await frame.get_by_role("button", name=label).is_visible():
-                    got_button = True
-                    self.logger.debug(f'Got button by role on frame: {label}')
-                    await frame.get_by_role("button", name=label).click(timeout=2000)
-                    break
+                try:
+                    async with timeout(5):
+                        if await frame.get_by_label(label).is_visible():
+                            got_button = True
+                            self.logger.debug(f'Got button by label on frame: {label}')
+                            await frame.get_by_label(label).click(timeout=2000)
+                            break
+                except (TimeoutError, asyncio.TimeoutError) as e:
+                    self.logger.warning(f'Frame consent timeout: {e}')
+
+                try:
+                    async with timeout(5):
+                        if await frame.get_by_role("button", name=label).is_visible():
+                            got_button = True
+                            self.logger.debug(f'Got button by role on frame: {label}')
+                            await frame.get_by_role("button", name=label).click(timeout=2000)
+                            break
+                except (TimeoutError, asyncio.TimeoutError) as e:
+                    self.logger.warning(f'Frame consent timeout: {e}')
         except Exception as e:
             self.logger.info(f'Issue with frame consent: {e}')
         return got_button
@@ -908,8 +924,13 @@ class Capture():
                     self.logger.debug('Done with captcha.')
 
                     # move mouse
-                    await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
-                    self.logger.debug('Moved mouse.')
+                    try:
+                        async with timeout(5):
+                            await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
+                            self.logger.debug('Moved mouse.')
+                    except (asyncio.TimeoutError, TimeoutError):
+                        self.logger.debug('Moving the mouse caused a timeout.')
+
                     await self._wait_for_random_timeout(page, 5)
                     self.logger.debug('Keep going after moving mouse.')
 
@@ -979,11 +1000,14 @@ class Capture():
                     self.logger.debug('Keep going after moving on page.')
 
                     try:
-                        await page.keyboard.press('PageUp')
-                        self.logger.debug('PageUp on keyboard')
-                        await self._wait_for_random_timeout(page, 3)
-                        await page.keyboard.press('PageDown')
-                        self.logger.debug('PageDown on keyboard')
+                        async with timeout(5):
+                            await page.keyboard.press('PageUp')
+                            self.logger.debug('PageUp on keyboard')
+                            await self._wait_for_random_timeout(page, 3)
+                            await page.keyboard.press('PageDown')
+                            self.logger.debug('PageDown on keyboard')
+                    except (asyncio.TimeoutError, TimeoutError):
+                        self.logger.debug('Using keyboard caused a timeout.')
                     except Error as e:
                         self.logger.debug(f'Unable to use keyboard: {e}')
                 if self.wait_for_download > 0:
