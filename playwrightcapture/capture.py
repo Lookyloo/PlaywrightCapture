@@ -746,7 +746,7 @@ class Capture():
                                                         (time + 5) * 1000))
                 self.logger.debug(f'Moved time forward by ~{time}s.')
         except (TimeoutError, asyncio.TimeoutError):
-            self.logger.warning('Unable to move time forward.')
+            self.logger.info('Unable to move time forward.')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
@@ -1118,61 +1118,19 @@ class Capture():
             to_return['error'] = f"The target was closed - {e}"
             self.should_retry = True
         except Error as e:
+            # NOTE: there are a lot of errors that look like duplicates and they are trggered at different times in the process.
+            # it is tricky to figure our which one whouls (and should not) trigger a retry. Below is our best guess and it will change over time.
             self._update_exceptions(e)
             to_return['error'] = e.message
             to_return['error_name'] = e.name
             # TODO: check e.message and figure out if it is worth retrying or not.
             # NOTE: e.name is generally (always?) "Error"
-            if self._exception_is_network_error(e):
-                # Expected errors
+            if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
                 self.logger.info(f'Unable to process {url}: {e.name}')
-                if e.name == 'net::ERR_CONNECTION_RESET':
-                    self.should_retry = True
-            elif e.name in ['NS_BINDING_CANCELLED_OLD_LOAD',
-                            'NS_BINDING_ABORTED',
-                            'NS_ERROR_PARSED_DATA_CACHED',
-                            'NS_ERROR_DOCUMENT_NOT_CACHED']:
+            elif self._retry_network_error(e) or self._retry_browser_error(e):
                 # this one sounds like something we can retry...
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
                 self.should_retry = True
-            elif e.name in ['Download is starting',
-                            'Connection closed',
-                            'Connection terminated unexpectedly',
-                            'Navigation interrupted by another one',
-                            'Navigation failed because page was closed!',
-                            'Target page, context or browser has been closed',
-                            'Peer failed to perform TLS handshake: A packet with illegal or unsupported version was received.',
-                            'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
-                            'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
-                            'Peer failed to perform TLS handshake: Error receiving data: Connection reset by peer',
-                            'Peer sent fatal TLS alert: Handshake failed',
-                            'Peer sent fatal TLS alert: Internal error',
-                            'Peer sent fatal TLS alert: The server name sent was not recognized',
-                            'Load cannot follow more than 20 redirections',
-                            'Page crashed',
-                            'Error receiving data: Connection reset by peer',
-                            'Internal SOCKSv5 proxy server error.',
-                            'Host unreachable through SOCKSv5 server.',
-                            'HTTP/2 Error: NO_ERROR',
-                            'HTTP/2 Error: PROTOCOL_ERROR']:
-                # Other errors, let's give it another shot
-                self.logger.info(f'Issue with {url} (retrying): {e.message}')
-                self.should_retry = True
-            elif e.name in ['Target page, context or browser has been closed']:
-                # The browser barfed, let's try again
-                self.logger.info(f'Browser barfed on {url} (retrying): {e.message}')
-                self.should_retry = True
-            elif e.name in ['net::ERR_INVALID_AUTH_CREDENTIALS',
-                            'net::ERR_BAD_SSL_CLIENT_AUTH_CERT',
-                            'net::ERR_CERT_DATE_INVALID',
-                            'net::ERR_UNEXPECTED_PROXY_AUTH',
-                            'net::ERR_UNSAFE_PORT']:
-                # No need to retry, the credentials/certs are wrong/missing.
-                pass
-            elif e.name and any([msg in e.name for msg in ['is interrupted by another navigation to', 'Page.bringToFront']]):
-                self.should_retry = True
-            elif e.name and any([msg in e.name for msg in ['Error resolving', 'Could not connect to']]):
-                pass
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: "{e.name}" - {e.message}')
@@ -1404,12 +1362,66 @@ class Capture():
                 _, name = exception.message.split(': ', maxsplit=1)
             exception._name = name.strip()
 
-    def _exception_is_network_error(self, exception: Error) -> bool:
+    def _retry_browser_error(self, exception: Error) -> bool:
+        if exception.name in [
+            'Download is starting',
+            'Connection closed',
+            'Connection terminated unexpectedly',
+            'Navigation interrupted by another one',
+            'Navigation failed because page was closed!',
+            'Target page, context or browser has been closed',
+            'Peer failed to perform TLS handshake: A packet with illegal or unsupported version was received.',
+            'Peer failed to perform TLS handshake: The TLS connection was non-properly terminated.',
+            'Peer failed to perform TLS handshake: Error sending data: Connection reset by peer',
+            'Peer failed to perform TLS handshake: Error receiving data: Connection reset by peer',
+            'Peer sent fatal TLS alert: Handshake failed',
+            'Peer sent fatal TLS alert: Internal error',
+            'Peer sent fatal TLS alert: The server name sent was not recognized',
+            'Load cannot follow more than 20 redirections',
+            'Page crashed',
+            'Error receiving data: Connection reset by peer',
+            'Internal SOCKSv5 proxy server error.',
+            'Host unreachable through SOCKSv5 server.',
+            # The browser barfed
+            'Target page, context or browser has been closed',
+        ]:
+            # Other errors, let's give it another shot
+            return True
+        elif exception.name and any(msg in exception.name for msg in ['is interrupted by another navigation to',
+                                                                      'Page.bringToFront',
+                                                                      'TypeError']):
+            # Match on partial string with variable content
+            return True
+        return False
+
+    def _retry_network_error(self, exception: Error) -> bool:
+        if exception.name in [
+                'HTTP/2 Error: NO_ERROR',
+                'HTTP/2 Error: PROTOCOL_ERROR',
+                'NS_BINDING_ABORTED',
+                'NS_BINDING_CANCELLED_OLD_LOAD',
+                'NS_ERROR_DOCUMENT_NOT_CACHED',
+                'NS_ERROR_NET_PARTIAL_TRANSFER',
+                'NS_ERROR_PARSED_DATA_CACHED',
+                'net::ERR_CONNECTION_RESET',
+                'net::ERR_EMPTY_RESPONSE',
+                'net::ERR_INVALID_RESPONSE',
+                'net::ERR_RESPONSE_HEADERS_TRUNCATED',
+                'net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH',
+        ]:
+            return True
+        return False
+
+    def fatal_browser_error(self, exception: Error) -> bool:
+        if exception.name and any(msg in exception.name for msg in ['Error resolving', 'Could not connect to']):
+            return True
+        return False
+
+    def _fatal_network_error(self, exception: Error) -> bool:
         if exception.name in [
                 'NS_ERROR_ABORT',
                 'NS_ERROR_CONNECTION_REFUSED',
                 'NS_ERROR_NET_INTERRUPT',
-                'NS_ERROR_NET_PARTIAL_TRANSFER',
                 'NS_ERROR_NET_RESET',
                 'NS_ERROR_NET_TIMEOUT',
                 'NS_ERROR_REDIRECT_LOOP',
@@ -1420,27 +1432,34 @@ class Capture():
                 'net::ERR_ADDRESS_UNREACHABLE',
                 'net::ERR_CONNECTION_CLOSED',
                 'net::ERR_CONNECTION_REFUSED',
-                'net::ERR_CONNECTION_RESET',
                 'net::ERR_CONNECTION_TIMED_OUT',
-                'net::ERR_EMPTY_RESPONSE',
                 'net::ERR_HTTP_RESPONSE_CODE_FAILURE',
                 'net::ERR_HTTP2_PROTOCOL_ERROR',
                 'net::ERR_INVALID_REDIRECT',
-                'net::ERR_INVALID_RESPONSE',
                 'net::ERR_NAME_NOT_RESOLVED',
                 'net::ERR_NETWORK_ACCESS_DENIED',
                 'net::ERR_QUIC_PROTOCOL_ERROR',
-                'net::ERR_RESPONSE_HEADERS_TRUNCATED',
                 'net::ERR_SOCKET_NOT_CONNECTED',
                 'net::ERR_SOCKS_CONNECTION_FAILED',
                 'net::ERR_SSL_KEY_USAGE_INCOMPATIBLE',
                 'net::ERR_SSL_PROTOCOL_ERROR',
                 'net::ERR_SSL_UNRECOGNIZED_NAME_ALERT',
-                'net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH',
                 'net::ERR_TIMED_OUT',
                 'net::ERR_TOO_MANY_REDIRECTS',
+                'net::ERR_UNSAFE_PORT',
                 'SSL_ERROR_UNKNOWN',
         ]:
+            return True
+        return False
+
+    def _fatal_auth_error(self, exception: Error) -> bool:
+        if exception.name in [
+                'net::ERR_INVALID_AUTH_CREDENTIALS',
+                'net::ERR_BAD_SSL_CLIENT_AUTH_CERT',
+                'net::ERR_CERT_DATE_INVALID',
+                'net::ERR_UNEXPECTED_PROXY_AUTH',
+        ]:
+            # No need to retry, the credentials/certs are wrong/missing.
             return True
         return False
 
