@@ -236,12 +236,12 @@ class Capture():
 
         return self
 
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         if hasattr(self, '_temp_harfile'):
             os.unlink(self._temp_harfile.name)
 
         try:
-            await self.browser.close()
+            await self.browser.close(reason="Closing browser at the end of the capture.")
         except Exception as e:
             # We may land in a situation where the capture was forcefully closed and the browser is already closed
             self.logger.info(f'Unable to close browser: {e}')
@@ -250,6 +250,7 @@ class Capture():
         except Exception as e:
             # this should't happen, but just in case it does...
             self.logger.info(f'Unable to stop playwright: {e}')
+        return True
 
     @property
     def locale(self) -> str:
@@ -1154,14 +1155,20 @@ class Capture():
                         to_return['error'] = f'Unable to get the cookies: {e}'
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
-                    page.remove_listener("requestfinished", store_request)
-                    await page.close()
-                    await self.context.close()  # context needs to be closed to generate the HAR
-                    self.logger.debug('Context closed.')
-                    with open(self._temp_harfile.name) as _har:
-                        to_return['har'] = json.load(_har)
-                    self.logger.debug('Got HAR.')
+                    async with timeout(60):
+                        page.remove_listener("requestfinished", store_request)
+                        await page.close(reason="Closing the page because the capture finished.")
+                        self.logger.debug('Page closed.')
+                        await self.context.close(reason="Closing the context because the capture finished.")  # context needs to be closed to generate the HAR
+                        self.logger.debug('Context closed.')
+                        with open(self._temp_harfile.name) as _har:
+                            to_return['har'] = json.load(_har)
+                        self.logger.debug('Got HAR.')
+                except (TimeoutError, asyncio.TimeoutError):
+                    self.logger.warning("Unable to close page and context at the end of the capture.")
+                    self.should_retry = True
                 except Exception as e:
+                    self.logger.warning("Other exception while finishingup the capture: {e}.")
                     if 'error' not in to_return:
                         to_return['error'] = f'Unable to generate HAR file: {e}'
         self.logger.debug('Capture done')
@@ -1170,17 +1177,27 @@ class Capture():
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         self.logger.debug("Capturing a screenshot of the full page.")
         try:
-            return await page.screenshot(full_page=True, timeout=10000)
+            async with timeout(15):
+                return await page.screenshot(full_page=True, timeout=10000)
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.info("Screenshot of the full page got stuck, trying to scale it down.")
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
 
         try:
-            return await page.screenshot(full_page=True, scale="css", timeout=30000)
+            async with timeout(35):
+                return await page.screenshot(full_page=True, scale="css", timeout=30000)
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.info("Screenshot of the full page got stuck, trying to get the current viewport only.")
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
 
         try:
-            return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=5000)
+            async with timeout(10):
+                return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=5000)
+        except (TimeoutError, asyncio.TimeoutError) as e:
+            self.logger.info("Screenshot of the full page got stuck, unable to get any screenshot.")
+            raise e
         except Error as e:
             self.logger.info(f"Unable to get any screenshot: {e}")
             raise e
