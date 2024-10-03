@@ -1168,7 +1168,7 @@ class Capture():
                     self.logger.warning("Unable to close page and context at the end of the capture.")
                     self.should_retry = True
                 except Exception as e:
-                    self.logger.warning("Other exception while finishingup the capture: {e}.")
+                    self.logger.warning(f"Other exception while finishing up the capture: {e}.")
                     if 'error' not in to_return:
                         to_return['error'] = f'Unable to generate HAR file: {e}'
         self.logger.debug('Capture done')
