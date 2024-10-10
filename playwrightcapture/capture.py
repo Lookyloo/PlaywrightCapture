@@ -198,6 +198,7 @@ class Capture():
         self._timezone_id: str = ''
         self._locale: str = 'en-US'
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
+        self._java_script_enabled = True
 
     def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
         splitted = urlsplit(proxy)
@@ -426,6 +427,14 @@ class Capture():
         else:
             raise InvalidPlaywrightParameter(f'Invalid color scheme ({color_scheme}), must be in {", ".join(schemes)}.')
 
+    @property
+    def java_script_enabled(self) -> bool:
+        return self._java_script_enabled
+
+    @java_script_enabled.setter
+    def java_script_enabled(self, enabled: bool) -> None:
+        self._java_script_enabled = enabled
+
     async def initialize_context(self) -> None:
         device_context_settings = {}
         if self.device_name:
@@ -445,6 +454,7 @@ class Capture():
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
             bypass_csp=True,
+            java_script_enabled=self.java_script_enabled,
             http_credentials=self.http_credentials if self.http_credentials else None,
             user_agent=ua,
             locale=self.locale if self.locale else None,
