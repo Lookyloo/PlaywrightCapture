@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.26.1"
+version = "1.26.2"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -19,16 +19,19 @@ classifiers=[
 
 [tool.poetry.dependencies]
 python = "^3.8"
-playwright = "^1.47.0"
+playwright = "^1.48.0"
 dateparser = "^1.2.0"
 beautifulsoup4 = {version= "^4.12.3", extras = ["lxml", "charset_normalizer"]}
 w3lib = "^2.2.1"
 pydub = {version = "^0.25.1", optional = true}
-SpeechRecognition = {version = "^3.10.4", optional = true}
+SpeechRecognition = [
+    {version = "<3.11", python = "<3.9", optional = true},
+    {version = ">=3.11", python = ">=3.9", optional = true}
+]
 pytz = {"version" = "^2024.2", python = "<3.9"}
 tzdata = "^2024.2"
 playwright-stealth = "^1.0.6"
-setuptools = "^75.1.0"
+setuptools = "^75.2.0"
 puremagic = "^1.28"
 async-timeout = {version = "^4.0.3", python = "<3.11"}
 aiohttp = {extras = ["speedups"], version = "^3.10.10"}
@@ -41,9 +44,9 @@ recaptcha = ["pydub", "SpeechRecognition"]
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-types-beautifulsoup4 = "^4.12.0.20240907"
+types-beautifulsoup4 = "^4.12.0.20241020"
 pytest = "^8.3.3"
-mypy = "^1.12.0"
+mypy = "^1.12.1"
 types-dateparser = "^1.2.0.20240420"
 types-pytz = "^2024.2.0.20241003"
 
