@@ -102,7 +102,7 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
 class PCStealthConfig(StealthConfig):  # type: ignore[misc]
 
     @property
-    def enabled_scripts(self) -> Generator[str]:  # type: ignore[type-arg]
+    def enabled_scripts(self) -> Generator[str]:
         self.chrome_app = True
         self.chrome_csi = True
         self.chrome_runtime = True
