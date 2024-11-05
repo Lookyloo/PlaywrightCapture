@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
-from typing import Any, TypedDict, Literal, TYPE_CHECKING, MutableMapping, Generator
+from typing import Any, TypedDict, Literal, TYPE_CHECKING
+from collections.abc import MutableMapping, Generator
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
 
@@ -38,11 +39,8 @@ from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
 
-if sys.version_info < (3, 9):
-    from pytz import all_timezones_set
-else:
-    from zoneinfo import available_timezones
-    all_timezones_set = available_timezones()
+from zoneinfo import available_timezones
+all_timezones_set = available_timezones()
 
 if sys.version_info < (3, 11):
     from async_timeout import timeout
@@ -104,7 +102,7 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
 class PCStealthConfig(StealthConfig):  # type: ignore[misc]
 
     @property
-    def enabled_scripts(self) -> Generator[str, None, None]:
+    def enabled_scripts(self) -> Generator[str]:  # type: ignore[type-arg]
         self.chrome_app = True
         self.chrome_csi = True
         self.chrome_runtime = True
