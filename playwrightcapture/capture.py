@@ -1460,6 +1460,7 @@ class Capture():
                 'net::ERR_CONNECTION_TIMED_OUT',
                 'net::ERR_HTTP_RESPONSE_CODE_FAILURE',
                 'net::ERR_HTTP2_PROTOCOL_ERROR',
+                'net::ERR_INVALID_HTTP_RESPONSE',
                 'net::ERR_INVALID_REDIRECT',
                 'net::ERR_NAME_NOT_RESOLVED',
                 'net::ERR_NETWORK_ACCESS_DENIED',
