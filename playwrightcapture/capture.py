@@ -732,7 +732,7 @@ class Capture():
                             await frame.get_by_label(label).click(timeout=2000)
                             break
                 except (TimeoutError, asyncio.TimeoutError) as e:
-                    self.logger.warning(f'Frame consent timeout: {e}')
+                    self.logger.warning(f'Consent timeout (label {label}) : {e}')
 
                 try:
                     async with timeout(5):
@@ -742,9 +742,9 @@ class Capture():
                             await frame.get_by_role("button", name=label).click(timeout=2000)
                             break
                 except (TimeoutError, asyncio.TimeoutError) as e:
-                    self.logger.warning(f'Frame consent timeout: {e}')
+                    self.logger.warning(f'Frame consent timeout (button {label}): {e}')
         except Exception as e:
-            self.logger.info(f'Issue with frame consent: {e}')
+            self.logger.info(f'Issue with consent validation: {e}')
         return got_button
 
     async def _move_time_forward(self, page: Page, time: int) -> None:
@@ -825,11 +825,17 @@ class Capture():
             capturing_sub = False
             try:
                 page = await self.context.new_page()
-                await page.clock.install()
             except Error as e:
-                self.logger.warning(f'The context is in a broken state: {e}')
+                self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
                 self.should_retry = True
                 return to_return
+
+            try:
+                await page.clock.install()
+                clock_set = True
+            except Error as e:
+                self.logger.warning(f'Unable to install the clock: {e}')
+                clock_set = False
 
             if allow_tracking:
                 # Add authorization clickthroughs
@@ -898,8 +904,7 @@ class Capture():
                     await page.bring_to_front()
                     self.logger.debug('Page moved to front.')
                 except Error as e:
-                    self.logger.warning('Page in a broken state.')
-                    raise e
+                    self.logger.warning(f'Unable to bring the page to the front: {e}.')
 
                 # page instrumentation
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
@@ -969,7 +974,8 @@ class Capture():
                             self.logger.debug('Got button on main frame')
                             await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
 
-                    await self._move_time_forward(page, 10)
+                    if clock_set:
+                        await self._move_time_forward(page, 10)
 
                     if parsed_url.fragment:
                         # We got a fragment, make sure we go to it and scroll only a little bit.
@@ -1037,8 +1043,9 @@ class Capture():
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
 
-                # fast forward ~30s
-                await self._move_time_forward(page, 30)
+                if clock_set:
+                    # fast forward ~30s
+                    await self._move_time_forward(page, 30)
 
                 self.logger.debug('Done with instrumentation, waiting for network idle.')
                 await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
