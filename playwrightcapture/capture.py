@@ -484,7 +484,7 @@ class Capture():
         # See https://github.com/microsoft/playwright/issues/16577
         chromium_permissions = [
             'accelerometer',
-            'accessibility-events',
+            # 'accessibility-events',  # broken in v1.49 - https://github.com/microsoft/playwright-python/issues/2663
             'ambient-light-sensor',
             'background-sync',
             'camera',
