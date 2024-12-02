@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PlaywrightCapture"
-version = "1.27.3"
+version = "1.27.4"
 description = "A simple library to capture websites using playwright"
 authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
 license = "BSD-3-Clause"
@@ -30,7 +30,7 @@ playwright-stealth = "^1.0.6"
 setuptools = "^75.6.0"
 puremagic = "^1.28"
 async-timeout = {version = "^4.0.3", python = "<3.11"}
-aiohttp = {version = "^3.11.7", extras = ["speedups"]}
+aiohttp = {version = "^3.11.9", extras = ["speedups"]}
 aiohttp-socks = "^0.9"
 
 [tool.poetry.extras]
@@ -41,7 +41,7 @@ optional = true
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20241020"
-pytest = "^8.3.3"
+pytest = "^8.3.4"
 mypy = "^1.13.0"
 types-dateparser = "^1.2.0.20240420"
 types-pytz = "^2024.2.0.20241003"
