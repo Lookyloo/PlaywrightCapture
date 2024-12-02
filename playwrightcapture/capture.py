@@ -762,7 +762,8 @@ class Capture():
                            page: Page | None=None, depth: int=0,
                            rendered_hostname_only: bool=True,
                            with_favicon: bool=False,
-                           allow_tracking: bool=False
+                           allow_tracking: bool=False,
+                           clock_set: bool=False
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
@@ -1097,7 +1098,8 @@ class Capture():
                                         url=url, referer=page.url,
                                         page=page, depth=depth,
                                         rendered_hostname_only=rendered_hostname_only,
-                                        max_depth_capture_time=max_capture_time)
+                                        max_depth_capture_time=max_capture_time,
+                                        clock_set=clock_set)
                                     to_return['children'].append(child_capture)  # type: ignore[union-attr]
                             except (TimeoutError, asyncio.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
