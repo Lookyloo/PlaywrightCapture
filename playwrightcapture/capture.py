@@ -18,13 +18,12 @@ from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, TypedDict, Literal, TYPE_CHECKING
-from collections.abc import MutableMapping, Generator
+from collections.abc import MutableMapping, Iterator
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
 
 import aiohttp
 import dateparser
-import urllib3
 
 from aiohttp_socks import ProxyConnector  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup
@@ -60,9 +59,6 @@ try:
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
-
-# Do not show TLS warnings from urllib3 when fetching a favicon
-urllib3.disable_warnings()
 
 
 class CaptureResponse(TypedDict, total=False):
@@ -102,7 +98,7 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
 class PCStealthConfig(StealthConfig):  # type: ignore[misc]
 
     @property
-    def enabled_scripts(self) -> Generator[str]:
+    def enabled_scripts(self) -> Iterator[str]:
         self.chrome_app = True
         self.chrome_csi = True
         self.chrome_runtime = True
@@ -698,6 +694,7 @@ class Capture():
             "Accept all",
             "Accept",
             "Agree and close",
+            "I agree",
             # Dutch
             "Accepteer",
             # Spanish
