@@ -19,7 +19,7 @@ classifiers=[
 
 [tool.poetry.dependencies]
 python = "^3.9"
-playwright = "^1.49.0"
+playwright = "^1.49.1"
 dateparser = "^1.2.0"
 beautifulsoup4 = {version= "^4.12.3", extras = ["lxml", "charset_normalizer"]}
 w3lib = "^2.2.1"
