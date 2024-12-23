@@ -25,7 +25,7 @@ from zipfile import ZipFile
 import aiohttp
 import dateparser
 
-from aiohttp_socks import ProxyConnector  # type: ignore[import-untyped]
+from aiohttp_socks import ProxyConnector
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
