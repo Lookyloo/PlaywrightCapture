@@ -13,11 +13,12 @@ import sys
 import time
 
 from base64 import b64decode
+from dataclasses import dataclass
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, TypedDict, Literal, TYPE_CHECKING
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Iterator
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
 
@@ -30,7 +31,7 @@ from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import Stealth  # type: ignore[attr-defined]
+from playwright_stealth import stealth_async, StealthConfig  # type: ignore[import-untyped]
 from puremagic import PureError, from_string
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -53,8 +54,8 @@ if TYPE_CHECKING:
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
-    import pydub
-    from speech_recognition import Recognizer, AudioFile
+    import pydub  # type: ignore[import-untyped]
+    from speech_recognition import Recognizer, AudioFile  # type: ignore[import-untyped]
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
@@ -92,6 +93,39 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
 # good test pages:
 # https://bot.incolumitas.com/
 # https://fingerprintjs.github.io/BotD/main/
+
+@dataclass
+class PCStealthConfig(StealthConfig):  # type: ignore[misc]
+
+    @property
+    def enabled_scripts(self) -> Iterator[str]:
+        self.chrome_app = True
+        self.chrome_csi = True
+        self.chrome_runtime = True
+        self.chrome_load_times = True
+        self.navigator_plugins = True
+        self.hairline = True
+        self.iframe_content_window = True
+        self.media_codecs = True
+
+        # permissions are handled directly in playwright
+        self.navigator_permissions = False
+        # Platform is correct now
+        self.navigator_platform = False
+        # probably useless, but it will fallback to 4 regardless
+        self.navigator_hardware_concurrency = 4
+        # Webgl vendor is correct now
+        self.webgl_vendor = False
+        # Set by the viewport
+        self.outerdimensions = False
+
+        # Not working with Playwright 1.45+
+        self.navigator_languages = False  # Causes issue
+        self.navigator_user_agent = False  # Causes issues
+        self.navigator_vendor = False  # Causes issues
+
+        yield from super().enabled_scripts
+
 
 class Capture():
 
@@ -426,14 +460,6 @@ class Capture():
             # record_video_dir='./videos/',
             **device_context_settings
         )
-
-        stealth = Stealth(
-            navigator_languages_override=(self.locale, self.locale.split('-')[0]) if self.locale else ("en-US", "en"),
-            navigator_user_agent_override=ua,
-            init_scripts_only=True
-        )
-        await stealth.apply_stealth_async(self.context)
-
         self.context.set_default_timeout(self._capture_timeout * 1000)
 
         if self.cookies:
@@ -822,6 +848,8 @@ class Capture():
                 await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_clickthrough(page)
                 await self.__dialog_tarteaucitron_clickthrough(page)
+
+            await stealth_async(page, PCStealthConfig())
 
             page.set_default_timeout((self._capture_timeout - 2) * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
@@ -1328,12 +1356,12 @@ class Capture():
                     mp3_content = await response.read()
                 with NamedTemporaryFile() as mp3_file, NamedTemporaryFile() as wav_file:
                     mp3_file.write(mp3_content)
-                    pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")  # type: ignore[attr-defined,no-untyped-call]
-                    recognizer = Recognizer()  # type: ignore[no-untyped-call]
-                    recaptcha_audio = AudioFile(wav_file.name)  # type: ignore[no-untyped-call]
+                    pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")
+                    recognizer = Recognizer()
+                    recaptcha_audio = AudioFile(wav_file.name)
                     with recaptcha_audio as source:
-                        audio = recognizer.record(source)  # type: ignore[no-untyped-call]
-                    text = recognizer.recognize_google(audio)  # type: ignore[attr-defined]
+                        audio = recognizer.record(source)
+                    text = recognizer.recognize_google(audio)
                 await main_frame.get_by_role("textbox", name="Enter what you hear").fill(text)
                 await main_frame.get_by_role("button", name="Verify").click()
                 await self._safe_wait(page, 5)

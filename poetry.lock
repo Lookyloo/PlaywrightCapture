@@ -1175,25 +1175,20 @@ pyee = "12.0.0"
 
 [[package]]
 name = "playwright-stealth"
-version = "2.0.0rc4"
+version = "1.0.6"
 description = "playwright stealth"
 optional = false
-python-versions = ">=3.8"
-files = []
-develop = false
+python-versions = ">=3, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+files = [
+    {file = "playwright-stealth-1.0.6.tar.gz", hash = "sha256:b504d951d00fac755c7d13665a29611d415180510bd7d23f14ebc89439ba2043"},
+    {file = "playwright_stealth-1.0.6-py3-none-any.whl", hash = "sha256:b1b2bcf58eb6859aa53d42c49b91c4e27b74a6d13fc3d0c85eea513dd55efda3"},
+]
 
 [package.dependencies]
 playwright = "*"
 
 [package.extras]
-lint = ["black (>=24.8.0,<24.9.0)"]
-test = ["pytest", "pytest-asyncio"]
-
-[package.source]
-type = "git"
-url = "https://github.com/Mattwmaster58/playwright_stealth"
-reference = "rc4"
-resolved_reference = "c115046a0fb9735c88dcad7002332ac0d0b80e6a"
+test = ["pytest"]
 
 [[package]]
 name = "pluggy"
@@ -1940,4 +1935,4 @@ recaptcha = ["SpeechRecognition", "pydub"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "f0db0792270c54d68f2d143077dd538f219c12dcf7a7ec66ca00d606b649ac33"
+content-hash = "13bb80b2b378fe61ae3d2722ace042194affd67cb4236492a441a3731bfa2913"
