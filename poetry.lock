@@ -1192,8 +1192,8 @@ test = ["pytest", "pytest-asyncio"]
 [package.source]
 type = "git"
 url = "https://github.com/Mattwmaster58/playwright_stealth"
-reference = "HEAD"
-resolved_reference = "11a09ea492f1a43a5c1fee8ee79605b7f05fca43"
+reference = "rc4"
+resolved_reference = "c115046a0fb9735c88dcad7002332ac0d0b80e6a"
 
 [[package]]
 name = "pluggy"
@@ -1940,4 +1940,4 @@ recaptcha = ["SpeechRecognition", "pydub"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "36a692950f71bce521461e68c6a0397816b8ec178734eb4df15aa9b93f58bd9e"
+content-hash = "f0db0792270c54d68f2d143077dd538f219c12dcf7a7ec66ca00d606b649ac33"

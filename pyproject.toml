@@ -31,7 +31,7 @@ puremagic = "^1.28"
 async-timeout = {version = "^4.0.3", python = "<3.11"}
 aiohttp = {version = "^3.11.11", extras = ["speedups"]}
 aiohttp-socks = "^0.10"
-playwright-stealth = {git = "https://github.com/Mattwmaster58/playwright_stealth"}
+playwright-stealth = {git = "https://github.com/Mattwmaster58/playwright_stealth", rev = "rc4"}
 
 [tool.poetry.extras]
 recaptcha = ["pydub", "SpeechRecognition"]
