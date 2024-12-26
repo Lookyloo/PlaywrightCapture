@@ -223,6 +223,7 @@ class Capture():
 
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
+            channel="chromium" if self.browser_name == "chromium" else None,
             # headless=False
         )
 
