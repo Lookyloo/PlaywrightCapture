@@ -1,52 +1,52 @@
-[tool.poetry]
+[project]
 name = "PlaywrightCapture"
 version = "1.27.5"
 description = "A simple library to capture websites using playwright"
-authors = ["Raphaël Vinot <raphael.vinot@circl.lu>"]
+authors = [
+    {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
+]
 license = "BSD-3-Clause"
 repository = "https://github.com/Lookyloo/PlaywrightCapture"
 readme = "README.md"
+requires-python = ">=3.9"
 
+dynamic = [ "classifiers" ]
+
+dependencies = [
+    "playwright (>=1.49.1)",
+    "dateparser (>=1.2.0)",
+    "beautifulsoup4 [lxml,charset_normalizer] (>=4.12.3)",
+    "w3lib (>=2.2.1)",
+    "tzdata (>=2024.2)",
+    "playwright-stealth (>=1.0.6)",
+    "setuptools (>=75.7.0)",
+    "puremagic (>=1.28)",
+    "async-timeout (>=4.0.3) ; python_version < '3.11'",
+    "aiohttp [speedups] (>=3.11.11)",
+    "aiohttp-socks (>=0.10)"
+]
+
+
+[tool.poetry]
 classifiers=[
-    'License :: OSI Approved :: BSD License',
-    'Environment :: Console',
     'Intended Audience :: Science/Research',
     'Intended Audience :: Telecommunications Industry',
-    'Programming Language :: Python :: 3',
     'Topic :: Security',
     'Topic :: Internet',
 ]
 
-[tool.poetry.dependencies]
-python = "^3.9"
-playwright = "^1.49.1"
-dateparser = "^1.2.0"
-beautifulsoup4 = {version= "^4.12.3", extras = ["lxml", "charset_normalizer"]}
-w3lib = "^2.2.1"
-pydub = {version = "^0.25.1", optional = true}
-SpeechRecognition =  {version = ">=3.12.0", optional = true}
-tzdata = "^2024.2"
-playwright-stealth = "^1.0.6"
-setuptools = "^75.6.0"
-puremagic = "^1.28"
-async-timeout = {version = "^4.0.3", python = "<3.11"}
-aiohttp = {version = "^3.11.11", extras = ["speedups"]}
-aiohttp-socks = "^0.10"
 
-[tool.poetry.extras]
-recaptcha = ["pydub", "SpeechRecognition"]
-
-[tool.poetry.group.dev]
-optional = true
+[project.optional-dependencies]
+recaptcha = ["pydub (>=0.25.1)", "SpeechRecognition (>=3.13.0)"]
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20241020"
 pytest = "^8.3.4"
-mypy = "^1.14.0"
+mypy = "^1.14.1"
 types-dateparser = "^1.2.0.20240420"
 types-pytz = "^2024.2.0.20241221"
 
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0"]
 build-backend = "poetry.core.masonry.api"

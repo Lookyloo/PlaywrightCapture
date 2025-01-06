@@ -31,7 +31,7 @@ from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_async, StealthConfig  # type: ignore[import-untyped]
+from playwright_stealth import stealth_async, StealthConfig  # type: ignore[attr-defined]
 from puremagic import PureError, from_string
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -54,8 +54,8 @@ if TYPE_CHECKING:
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
-    import pydub  # type: ignore[import-untyped]
-    from speech_recognition import Recognizer, AudioFile  # type: ignore[import-untyped]
+    from pydub import AudioSegment  # type: ignore[attr-defined]
+    from speech_recognition import Recognizer, AudioFile
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
@@ -95,7 +95,7 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
 # https://fingerprintjs.github.io/BotD/main/
 
 @dataclass
-class PCStealthConfig(StealthConfig):  # type: ignore[misc]
+class PCStealthConfig(StealthConfig):
 
     @property
     def enabled_scripts(self) -> Iterator[str]:
@@ -1356,12 +1356,12 @@ class Capture():
                     mp3_content = await response.read()
                 with NamedTemporaryFile() as mp3_file, NamedTemporaryFile() as wav_file:
                     mp3_file.write(mp3_content)
-                    pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")
-                    recognizer = Recognizer()
-                    recaptcha_audio = AudioFile(wav_file.name)
+                    AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")  # type: ignore[no-untyped-call]
+                    recognizer = Recognizer()  # type: ignore[no-untyped-call]
+                    recaptcha_audio = AudioFile(wav_file.name)  # type: ignore[no-untyped-call]
                     with recaptcha_audio as source:
-                        audio = recognizer.record(source)
-                    text = recognizer.recognize_google(audio)
+                        audio = recognizer.record(source)  # type: ignore[no-untyped-call]
+                    text = recognizer.recognize_google(audio)  # type: ignore[attr-defined]
                 await main_frame.get_by_role("textbox", name="Enter what you hear").fill(text)
                 await main_frame.get_by_role("button", name="Verify").click()
                 await self._safe_wait(page, 5)
