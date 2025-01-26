@@ -696,6 +696,7 @@ class Capture():
             "Accept",
             "Agree and close",
             "I agree",
+            "Agree",
             # Dutch
             "Accepteer",
             # Spanish
@@ -1414,6 +1415,8 @@ class Capture():
             'Error receiving data: Connection reset by peer',
             'Internal SOCKSv5 proxy server error.',
             'Host unreachable through SOCKSv5 server.',
+            # JS stuff
+            'TurnstileError: [Cloudflare Turnstile] Error: 300030.',
             # The browser barfed
             'Target page, context or browser has been closed',
         ]:
