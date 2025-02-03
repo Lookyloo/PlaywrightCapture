@@ -1,22 +1,21 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.27.6"
+version = "1.27.7"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
 ]
 license = "BSD-3-Clause"
-repository = "https://github.com/Lookyloo/PlaywrightCapture"
 readme = "README.md"
 requires-python = ">=3.9"
 
 dynamic = [ "classifiers" ]
 
 dependencies = [
-    "playwright (>=1.49.1)",
+    "playwright (>=1.50.0)",
     "dateparser (>=1.2.0)",
-    "beautifulsoup4 [lxml,charset_normalizer] (>=4.12.3)",
-    "w3lib (>=2.2.1)",
+    "beautifulsoup4[charset-normalizer,lxml] (>=4.13.1)",
+    "w3lib (>=2.3.1)",
     "tzdata (>=2025.1)",
     "playwright-stealth (>=1.0.6)",
     "setuptools (>=75.8.0)",
@@ -26,6 +25,9 @@ dependencies = [
     "aiohttp-socks (>=0.10.1)"
 ]
 
+[project.urls]
+Repository = "https://github.com/Lookyloo/PlaywrightCapture"
+Issues = "https://github.com/Lookyloo/PlaywrightCapture/issues"
 
 [tool.poetry]
 classifiers=[
