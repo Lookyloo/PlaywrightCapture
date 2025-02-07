@@ -138,8 +138,8 @@ class Capture():
 
     def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
                  proxy: str | dict[str, str] | None=None,
-                 general_timeout_in_sec: int | None = None, loglevel: str | int='INFO',
-                 uuid: str | None=None):
+                 general_timeout_in_sec: int | None=None, loglevel: str | int='INFO',
+                 uuid: str | None=None, headless: bool=True):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -148,6 +148,7 @@ class Capture():
         :param general_timeout_in_sec: The general timeout for the capture, including children.
         :param loglevel: Python loglevel
         :param uuid: The UUID of the capture.
+        :param headless: Whether to run the browser in headless mode. WARNING: requires to run in a graphical environment.
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
@@ -167,6 +168,7 @@ class Capture():
                 self._capture_timeout = self._minimal_timeout
 
         self.device_name: str | None = device_name
+        self.headless: bool = headless
         self.proxy: ProxySettings = {}
         if proxy:
             if isinstance(proxy, str):
@@ -224,7 +226,7 @@ class Capture():
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
             channel="chromium" if self.browser_name == "chromium" else None,
-            # headless=False
+            headless=self.headless
         )
 
         # Set of URLs that were captured in that context
@@ -756,6 +758,142 @@ class Capture():
         except (TimeoutError, asyncio.TimeoutError):
             self.logger.info('Unable to move time forward.')
 
+    async def __instrumentation(self, page: Page, url: str, allow_tracking: bool, clock_set: bool) -> None:
+        # page instrumentation
+        await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
+        self.logger.debug('Start instrumentation.')
+
+        # check if we have anything on the page. If we don't, the page is not working properly.
+        if await self._failsafe_get_content(page):
+            self.logger.debug('Got rendered content')
+
+            # ==== recaptcha
+            # Same technique as: https://github.com/NikolaiT/uncaptcha3
+            if CAN_SOLVE_CAPTCHA:
+                try:
+                    if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=3000)
+                            and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=2000)):
+                        self.logger.info('Found a captcha')
+                        await self._recaptcha_solver(page)
+                except PlaywrightTimeoutError as e:
+                    self.logger.info(f'Captcha on {url} is not ready: {e}')
+                except TargetClosedError as e:
+                    self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
+                except Error as e:
+                    self.logger.warning(f'Error while resolving captcha on {url}: {e}')
+                except (TimeoutError, asyncio.TimeoutError) as e:
+                    self.logger.warning(f'[Timeout] Error while resolving captcha on {url}: {e}')
+                except Exception as e:
+                    self.logger.exception(f'General error with captcha solving on {url}: {e}')
+            # ======
+            # NOTE: testing
+            # await self.__cloudflare_bypass_attempt(page)
+            self.logger.debug('Done with captcha.')
+
+            # move mouse
+            try:
+                async with timeout(5):
+                    await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
+                    self.logger.debug('Moved mouse.')
+            except (asyncio.TimeoutError, TimeoutError):
+                self.logger.debug('Moving the mouse caused a timeout.')
+
+            await self._wait_for_random_timeout(page, 5)
+            self.logger.debug('Keep going after moving mouse.')
+
+            if allow_tracking:
+                await self._wait_for_random_timeout(page, 5)
+                # This event is required trigger the add_locator_handler
+                try:
+                    if await page.locator("body").first.is_visible():
+                        self.logger.debug('Got body.')
+                        await page.locator("body").first.click(button="right",
+                                                               timeout=5000,
+                                                               delay=50)
+                        self.logger.debug('Clicked on body.')
+                except Exception as e:
+                    self.logger.warning(f'Could not find body: {e}')
+
+                await self._wait_for_random_timeout(page, 5)
+                # triggering clicks on very generic frames is sometimes impossible, using button and common language.
+                self.logger.debug('Check other frames for button')
+                for frame in page.frames:
+                    if await self.__frame_consent(frame):
+                        await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
+                self.logger.debug('Done with frames.')
+
+                self.logger.debug('Check main frame for button')
+                if await self.__frame_consent(page.main_frame):
+                    self.logger.debug('Got button on main frame')
+                    await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
+
+            if clock_set:
+                await self._move_time_forward(page, 10)
+
+            # Parse the URL. If there is a fragment, we need to scroll to it manually
+            parsed_url = urlparse(url, allow_fragments=True)
+
+            if parsed_url.fragment:
+                # We got a fragment, make sure we go to it and scroll only a little bit.
+                fragment = unquote(parsed_url.fragment)
+                try:
+                    await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
+                    await self._wait_for_random_timeout(page, 2)
+                    async with timeout(5):
+                        await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
+                    self.logger.debug('Jumped to fragment.')
+                except PlaywrightTimeoutError as e:
+                    self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
+                except TargetClosedError as e:
+                    self.logger.warning(f'Target closed, unable to go to fragment "{fragment}": {e}')
+                except Error as e:
+                    self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
+                except (asyncio.TimeoutError, TimeoutError):
+                    self.logger.debug('Unable to scroll due to timeout')
+                except (asyncio.CancelledError):
+                    self.logger.debug('Unable to scroll due to timeout, call canceled')
+            else:
+                # scroll more
+                try:
+                    # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes.
+                    #   2024-07-08: Also, it sometimes get stuck.
+                    async with timeout(5):
+                        await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
+                    self.logger.debug('Scrolled down.')
+                except Error as e:
+                    self.logger.debug(f'Unable to scroll: {e}')
+                except (TimeoutError, asyncio.TimeoutError):
+                    self.logger.debug('Unable to scroll due to timeout')
+                except (asyncio.CancelledError):
+                    self.logger.debug('Unable to scroll due to timeout, call canceled')
+
+            await self._wait_for_random_timeout(page, 3)
+            self.logger.debug('Keep going after moving on page.')
+
+            try:
+                async with timeout(5):
+                    await page.keyboard.press('PageUp')
+                    self.logger.debug('PageUp on keyboard')
+                    await self._wait_for_random_timeout(page, 3)
+                    await page.keyboard.press('PageDown')
+                    self.logger.debug('PageDown on keyboard')
+            except (asyncio.TimeoutError, TimeoutError):
+                self.logger.debug('Using keyboard caused a timeout.')
+            except Error as e:
+                self.logger.debug(f'Unable to use keyboard: {e}')
+        if self.wait_for_download > 0:
+            self.logger.info('Waiting for download to finish...')
+            await self._safe_wait(page, 20)
+
+        if clock_set:
+            # fast forward ~30s
+            await self._move_time_forward(page, 30)
+
+        self.logger.debug('Done with instrumentation, waiting for network idle.')
+        await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
+        await self._safe_wait(page)
+        self.logger.debug('Done with instrumentation, done with waiting.')
+
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
                            page: Page | None=None, depth: int=0,
@@ -858,9 +996,6 @@ class Capture():
             page.on("dialog", lambda dialog: dialog.accept())
 
         try:
-            # Parse the URL. If there is a fragment, we need to scroll to it manually
-            parsed_url = urlparse(url, allow_fragments=True)
-
             try:
                 await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
                 page.on("download", handle_download)
@@ -906,128 +1041,11 @@ class Capture():
                 except Error as e:
                     self.logger.warning(f'Unable to bring the page to the front: {e}.')
 
-                # page instrumentation
-                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
-                self.logger.debug('Start instrumentation.')
-
-                # check if we have anything on the page. If we don't, the page is not working properly.
-                if await self._failsafe_get_content(page):
-                    self.logger.debug('Got rendered content')
-
-                    # ==== recaptcha
-                    # Same technique as: https://github.com/NikolaiT/uncaptcha3
-                    if CAN_SOLVE_CAPTCHA:
-                        try:
-                            if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=3000)
-                                    and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=2000)):
-                                self.logger.info('Found a captcha')
-                                await self._recaptcha_solver(page)
-                        except PlaywrightTimeoutError as e:
-                            self.logger.info(f'Captcha on {url} is not ready: {e}')
-                        except TargetClosedError as e:
-                            self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
-                        except Error as e:
-                            self.logger.warning(f'Error while resolving captcha on {url}: {e}')
-                        except (TimeoutError, asyncio.TimeoutError) as e:
-                            self.logger.warning(f'[Timeout] Error while resolving captcha on {url}: {e}')
-                        except Exception as e:
-                            self.logger.exception(f'General error with captcha solving on {url}: {e}')
-                    # ======
-                    # NOTE: testing
-                    # await self.__cloudflare_bypass_attempt(page)
-                    self.logger.debug('Done with captcha.')
-
-                    # move mouse
-                    try:
-                        async with timeout(5):
-                            await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
-                            self.logger.debug('Moved mouse.')
-                    except (asyncio.TimeoutError, TimeoutError):
-                        self.logger.debug('Moving the mouse caused a timeout.')
-
-                    await self._wait_for_random_timeout(page, 5)
-                    self.logger.debug('Keep going after moving mouse.')
-
-                    if allow_tracking:
-                        await self._wait_for_random_timeout(page, 5)
-                        # This event is required trigger the add_locator_handler
-                        try:
-                            if await page.locator("body").first.is_visible():
-                                self.logger.debug('Got body.')
-                                await page.locator("body").first.click(button="right",
-                                                                       timeout=5000,
-                                                                       delay=50)
-                                self.logger.debug('Clicked on body.')
-                        except Exception as e:
-                            self.logger.warning(f'Could not find body: {e}')
-
-                        await self._wait_for_random_timeout(page, 5)
-                        # triggering clicks on very generic frames is sometimes impossible, using button and common language.
-                        self.logger.debug('Check other frames for button')
-                        for frame in page.frames:
-                            if await self.__frame_consent(frame):
-                                await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
-                        self.logger.debug('Done with frames.')
-
-                        self.logger.debug('Check main frame for button')
-                        if await self.__frame_consent(page.main_frame):
-                            self.logger.debug('Got button on main frame')
-                            await self._wait_for_random_timeout(page, 10)  # Wait 10 sec after click
-
-                    if clock_set:
-                        await self._move_time_forward(page, 10)
-
-                    if parsed_url.fragment:
-                        # We got a fragment, make sure we go to it and scroll only a little bit.
-                        fragment = unquote(parsed_url.fragment)
-                        try:
-                            await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
-                            await self._wait_for_random_timeout(page, 2)
-                            async with timeout(5):
-                                await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
-                            self.logger.debug('Jumped to fragment.')
-                        except PlaywrightTimeoutError as e:
-                            self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
-                        except TargetClosedError as e:
-                            self.logger.warning(f'Target closed, unable to go to fragment "{fragment}": {e}')
-                        except Error as e:
-                            self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
-                        except (asyncio.TimeoutError, TimeoutError):
-                            self.logger.debug('Unable to scroll due to timeout')
-                        except (asyncio.CancelledError):
-                            self.logger.debug('Unable to scroll due to timeout, call canceled')
-                    else:
-                        # scroll more
-                        try:
-                            # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes.
-                            #   2024-07-08: Also, it sometimes get stuck.
-                            async with timeout(5):
-                                await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
-                            self.logger.debug('Scrolled down.')
-                        except Error as e:
-                            self.logger.debug(f'Unable to scroll: {e}')
-                        except (TimeoutError, asyncio.TimeoutError):
-                            self.logger.debug('Unable to scroll due to timeout')
-                        except (asyncio.CancelledError):
-                            self.logger.debug('Unable to scroll due to timeout, call canceled')
-
-                    await self._wait_for_random_timeout(page, 3)
-                    self.logger.debug('Keep going after moving on page.')
-
-                    try:
-                        async with timeout(5):
-                            await page.keyboard.press('PageUp')
-                            self.logger.debug('PageUp on keyboard')
-                            await self._wait_for_random_timeout(page, 3)
-                            await page.keyboard.press('PageDown')
-                            self.logger.debug('PageDown on keyboard')
-                    except (asyncio.TimeoutError, TimeoutError):
-                        self.logger.debug('Using keyboard caused a timeout.')
-                    except Error as e:
-                        self.logger.debug(f'Unable to use keyboard: {e}')
-                if self.wait_for_download > 0:
-                    self.logger.info('Waiting for download to finish...')
-                    await self._safe_wait(page, 20)
+                if self.headless:
+                    await self.__instrumentation(page, url, allow_tracking, clock_set)
+                else:
+                    self.logger.debug('Headed mode, skipping instrumentation.')
+                    await self._wait_for_random_timeout(page, self._capture_timeout - 5)
 
                 if multiple_downloads:
                     if len(multiple_downloads) == 1:
@@ -1042,16 +1060,6 @@ class Capture():
                                 filename, file_content = f_details
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
-
-                if clock_set:
-                    # fast forward ~30s
-                    await self._move_time_forward(page, 30)
-
-                self.logger.debug('Done with instrumentation, waiting for network idle.')
-                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
-                await self._safe_wait(page)
-
-                self.logger.debug('Done with instrumentation, done with waiting.')
 
                 if content := await self._failsafe_get_content(page):
                     to_return['html'] = content
