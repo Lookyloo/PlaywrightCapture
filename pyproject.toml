@@ -13,15 +13,15 @@ dynamic = [ "classifiers" ]
 
 dependencies = [
     "playwright (>=1.50.0)",
-    "dateparser (>=1.2.0)",
-    "beautifulsoup4[charset-normalizer,lxml] (>=4.13.1)",
+    "dateparser (>=1.2.1)",
+    "beautifulsoup4[charset-normalizer,lxml] (>=4.13.3)",
     "w3lib (>=2.3.1)",
     "tzdata (>=2025.1)",
     "playwright-stealth (>=1.0.6)",
     "setuptools (>=75.8.0)",
     "puremagic (>=1.28)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
-    "aiohttp [speedups] (>=3.11.11)",
+    "aiohttp[speedups] (>=3.11.12)",
     "aiohttp-socks (>=0.10.1)"
 ]
 
@@ -45,9 +45,9 @@ recaptcha = [
 ]
 
 [tool.poetry.group.dev.dependencies]
-types-beautifulsoup4 = "^4.12.0.20241020"
+types-beautifulsoup4 = "^4.12.0.20250204"
 pytest = "^8.3.4"
-mypy = "^1.14.1"
+mypy = "^1.15.0"
 types-dateparser = "^1.2.0.20240420"
 types-pytz = "^2024.2.0.20241221"
 
