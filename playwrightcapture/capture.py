@@ -757,6 +757,8 @@ class Capture():
                 self.logger.debug(f'Moved time forward by ~{time}s.')
         except (TimeoutError, asyncio.TimeoutError):
             self.logger.info('Unable to move time forward.')
+        except Exception as e:
+            self.logger.info(f'Error while moving time forward: {e}')
 
     async def __instrumentation(self, page: Page, url: str, allow_tracking: bool, clock_set: bool) -> None:
         # page instrumentation
@@ -1041,11 +1043,14 @@ class Capture():
                 except Error as e:
                     self.logger.warning(f'Unable to bring the page to the front: {e}.')
 
-                if self.headless:
-                    await self.__instrumentation(page, url, allow_tracking, clock_set)
-                else:
-                    self.logger.debug('Headed mode, skipping instrumentation.')
-                    await self._wait_for_random_timeout(page, self._capture_timeout - 5)
+                try:
+                    if self.headless:
+                        await self.__instrumentation(page, url, allow_tracking, clock_set)
+                    else:
+                        self.logger.debug('Headed mode, skipping instrumentation.')
+                        await self._wait_for_random_timeout(page, self._capture_timeout - 5)
+                except Exception as e:
+                    self.logger.exception(f'Error during instrumentation: {e}')
 
                 if multiple_downloads:
                     if len(multiple_downloads) == 1:
