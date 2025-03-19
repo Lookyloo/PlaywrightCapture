@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from playwright._impl._api_structures import (SetCookieParam, Geolocation,
                                                   HttpCredentials, Headers,
                                                   ViewportSize, Cookie,
-                                                  ProxySettings)
+                                                  ProxySettings, StorageState)
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
@@ -66,6 +66,7 @@ class CaptureResponse(TypedDict, total=False):
     last_redirected_url: str
     har: dict[str, Any] | None
     cookies: list[Cookie] | None
+    storage: StorageState | None
     error: str | None
     error_name: str | None
     html: str | None
@@ -186,6 +187,7 @@ class Capture():
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
         self._cookies: list[SetCookieParam] = []
+        self._storage: StorageState = {}
         self._http_credentials: HttpCredentials = {}
         self._geolocation: Geolocation = {}
         self._headers: Headers = {}
@@ -359,6 +361,18 @@ class Capture():
                 self.logger.warning(f'The cookie must have a URL ({url}) or a domain ({domain}) and a path ({path})')
 
     @property
+    def storage(self) -> StorageState:
+        return self._storage
+
+    @storage.setter
+    def storage(self, storage: dict[str, Any] | None) -> None:
+        if not storage:
+            return
+        if 'cookies' in storage and 'origins' in storage:
+            self._storage['cookies'] = storage['cookies']
+            self._storage['origins'] = storage['origins']
+
+    @property
     def headers(self) -> Headers:
         return self._headers
 
@@ -458,6 +472,7 @@ class Capture():
             timezone_id=self.timezone_id if self.timezone_id else None,
             color_scheme=self.color_scheme if self.color_scheme else None,
             viewport=vp,
+            storage_state=self.storage if self.storage else None,
             # For debug only
             # record_video_dir='./videos/',
             **device_context_settings
@@ -1177,6 +1192,7 @@ class Capture():
             self.logger.debug('Finishing up capture.')
             if not capturing_sub:
                 try:
+                    to_return['storage'] = await self.context.storage_state(indexed_db=True)
                     to_return['cookies'] = await self.context.cookies()
                     self.logger.debug('Done with cookies.')
                 except Exception as e:
