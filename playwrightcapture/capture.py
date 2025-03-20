@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
-from typing import Any, TypedDict, Literal, TYPE_CHECKING
+from typing import Any, Literal, TYPE_CHECKING
 from collections.abc import MutableMapping, Iterator
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
@@ -45,6 +45,11 @@ if sys.version_info < (3, 11):
     from async_timeout import timeout
 else:
     from asyncio import timeout
+
+if sys.version_info < (3, 12):
+    from typing_extensions import TypedDict
+else:
+    from typing import TypedDict
 
 if TYPE_CHECKING:
     from playwright._impl._api_structures import (SetCookieParam, Geolocation,

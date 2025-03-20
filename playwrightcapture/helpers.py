@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import sys
+
 from collections import defaultdict
-from typing import TypedDict
 
 from playwright.sync_api import sync_playwright
 
 from .exceptions import UnknownPlaywrightDeviceType
+
+if sys.version_info < (3, 12):
+    from typing_extensions import TypedDict
+else:
+    from typing import TypedDict
 
 
 class PlaywrightDevice(TypedDict):
