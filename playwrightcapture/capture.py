@@ -920,6 +920,7 @@ class Capture():
                            referer: str | None=None,
                            page: Page | None=None, depth: int=0,
                            rendered_hostname_only: bool=True,
+                           with_screenshot: bool=True,
                            with_favicon: bool=False,
                            allow_tracking: bool=False,
                            clock_set: bool=False
@@ -1099,7 +1100,11 @@ class Capture():
                         self.logger.warning(f'Unable to get favicons: {e}')
 
                 to_return['last_redirected_url'] = page.url
-                to_return['png'] = await self._failsafe_get_screenshot(page)
+                
+                if with_screenshot:
+                    to_return['png'] = await self._failsafe_get_screenshot(page)
+                else:
+                    to_return['png'] = None
 
                 self._already_captured.add(url)
                 if depth > 0 and to_return.get('html') and to_return['html']:
@@ -1131,7 +1136,7 @@ class Capture():
                                         page=page, depth=depth,
                                         rendered_hostname_only=rendered_hostname_only,
                                         max_depth_capture_time=max_capture_time,
-                                        clock_set=clock_set)
+                                        clock_set=clock_set, with_screenshot=with_screenshot)
                                     to_return['children'].append(child_capture)  # type: ignore[union-attr]
                             except (TimeoutError, asyncio.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
