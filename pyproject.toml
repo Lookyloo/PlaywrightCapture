@@ -16,9 +16,9 @@ dependencies = [
     "dateparser (>=1.2.1)",
     "beautifulsoup4[charset-normalizer,lxml] (>=4.13.3)",
     "w3lib (>=2.3.1)",
-    "tzdata (>=2025.1)",
+    "tzdata (>=2025.2)",
     "playwright-stealth (>=1.0.6)",
-    "setuptools (>=77.0.1)",
+    "setuptools (>=78.1.0)",
     "puremagic (>=1.28)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
     "aiohttp[speedups] (>=3.11.14)",
@@ -42,7 +42,7 @@ classifiers=[
 [project.optional-dependencies]
 recaptcha = [
     "pydub (>=0.25.1)",
-    "SpeechRecognition (>=3.14.1)"
+    "SpeechRecognition (>=3.14.2)"
 ]
 
 [tool.poetry.group.dev.dependencies]
@@ -50,7 +50,7 @@ types-beautifulsoup4 = "^4.12.0.20250204"
 pytest = "^8.3.5"
 mypy = "^1.15.0"
 types-dateparser = "^1.2.0.20250208"
-types-pytz = "^2025.1.0.20250318"
+types-pytz = "^2025.2.0.20250326"
 
 
 [build-system]
