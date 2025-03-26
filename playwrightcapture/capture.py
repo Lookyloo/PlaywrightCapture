@@ -1100,11 +1100,9 @@ class Capture():
                         self.logger.warning(f'Unable to get favicons: {e}')
 
                 to_return['last_redirected_url'] = page.url
-                
+
                 if with_screenshot:
                     to_return['png'] = await self._failsafe_get_screenshot(page)
-                else:
-                    to_return['png'] = None
 
                 self._already_captured.add(url)
                 if depth > 0 and to_return.get('html') and to_return['html']:
