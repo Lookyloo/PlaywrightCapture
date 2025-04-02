@@ -736,7 +736,7 @@ class Capture():
         got_button: bool = False
         try:
             try:
-                async with timeout(5):
+                async with timeout(3):
                     if await frame.locator("button.button__acceptAll").is_visible():
                         self.logger.info('Consent window found, clicking through.')
                         got_button = True
@@ -746,7 +746,7 @@ class Capture():
 
             for label in labels_to_click:
                 try:
-                    async with timeout(5):
+                    async with timeout(3):
                         if await frame.get_by_label(label).is_visible():
                             got_button = True
                             self.logger.debug(f'Got button by label on frame: {label}')
@@ -756,7 +756,7 @@ class Capture():
                     self.logger.warning(f'Consent timeout (label {label}) : {e}')
 
                 try:
-                    async with timeout(5):
+                    async with timeout(3):
                         if await frame.get_by_role("button", name=label).is_visible():
                             got_button = True
                             self.logger.debug(f'Got button by role on frame: {label}')
@@ -780,7 +780,15 @@ class Capture():
         except Exception as e:
             self.logger.info(f'Error while moving time forward: {e}')
 
-    async def __instrumentation(self, page: Page, url: str, allow_tracking: bool, clock_set: bool) -> None:
+    async def __instrumentation(self, page: Page, url: str, allow_tracking: bool) -> None:
+        try:
+            # NOTE: the clock must be installed after the page is loaded, otherwise it sometimes cause the complete capture to hang.
+            await page.clock.install()
+            clock_set = True
+        except Error as e:
+            self.logger.warning(f'Unable to install the clock: {e}')
+            clock_set = False
+
         # page instrumentation
         await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
         self.logger.debug('Start instrumentation.')
@@ -923,7 +931,6 @@ class Capture():
                            with_screenshot: bool=True,
                            with_favicon: bool=False,
                            allow_tracking: bool=False,
-                           clock_set: bool=False
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
@@ -991,13 +998,6 @@ class Capture():
                 self.should_retry = True
                 return to_return
 
-            try:
-                await page.clock.install()
-                clock_set = True
-            except Error as e:
-                self.logger.warning(f'Unable to install the clock: {e}')
-                clock_set = False
-
             if allow_tracking:
                 # Add authorization clickthroughs
                 await self.__dialog_didomi_clickthrough(page)
@@ -1020,8 +1020,8 @@ class Capture():
 
         try:
             try:
-                await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
                 page.on("download", handle_download)
+                await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
             except Error as initial_error:
                 self._update_exceptions(initial_error)
                 # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
@@ -1066,7 +1066,7 @@ class Capture():
 
                 try:
                     if self.headless:
-                        await self.__instrumentation(page, url, allow_tracking, clock_set)
+                        await self.__instrumentation(page, url, allow_tracking)
                     else:
                         self.logger.debug('Headed mode, skipping instrumentation.')
                         await self._wait_for_random_timeout(page, self._capture_timeout - 5)
@@ -1134,7 +1134,7 @@ class Capture():
                                         page=page, depth=depth,
                                         rendered_hostname_only=rendered_hostname_only,
                                         max_depth_capture_time=max_capture_time,
-                                        clock_set=clock_set, with_screenshot=with_screenshot)
+                                        with_screenshot=with_screenshot)
                                     to_return['children'].append(child_capture)  # type: ignore[union-attr]
                             except (TimeoutError, asyncio.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
@@ -1200,12 +1200,12 @@ class Capture():
             self.logger.debug('Finishing up capture.')
             if not capturing_sub:
                 try:
-                    to_return['storage'] = await self.context.storage_state(indexed_db=True)
-                    to_return['cookies'] = await self.context.cookies()
-                    self.logger.debug('Done with cookies.')
+                    to_return['storage'] = await self._failsafe_get_storage()
+                    to_return['cookies'] = await self._failsafe_get_cookies()
+                    self.logger.debug('Done with cookies and storage.')
                 except Exception as e:
                     if 'error' not in to_return:
-                        to_return['error'] = f'Unable to get the cookies: {e}'
+                        to_return['error'] = f'Unable to get the storage: {e}'
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
                     async with timeout(60):
@@ -1226,6 +1226,22 @@ class Capture():
                         to_return['error'] = f'Unable to generate HAR file: {e}'
         self.logger.debug('Capture done')
         return to_return
+
+    async def _failsafe_get_cookies(self) -> list[Cookie] | None:
+        try:
+            async with timeout(15):
+                return await self.context.cookies()
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.warning("Unable to get cookies (timeout).")
+        return None
+
+    async def _failsafe_get_storage(self) -> StorageState | None:
+        try:
+            async with timeout(15):
+                return await self.context.storage_state(indexed_db=True)
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.warning("Unable to get storage (timeout).")
+        return None
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         self.logger.debug("Capturing a screenshot of the full page.")
