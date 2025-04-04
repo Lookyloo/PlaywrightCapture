@@ -159,8 +159,9 @@ class Capture():
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
         self.logger: Logger | PlaywrightCaptureLogAdapter
-        if uuid is not None:
-            self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': uuid})
+        self.uuid = uuid
+        if self.uuid is not None:
+            self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': self.uuid})
         else:
             self.logger = master_logger
         self.browser_name: BROWSER = browser if browser else 'chromium'
@@ -1073,20 +1074,6 @@ class Capture():
                 except Exception as e:
                     self.logger.exception(f'Error during instrumentation: {e}')
 
-                if multiple_downloads:
-                    if len(multiple_downloads) == 1:
-                        to_return["downloaded_filename"] = multiple_downloads[0][0]
-                        to_return["downloaded_file"] = multiple_downloads[0][1]
-                    else:
-                        # we have multiple downloads, making it a zip
-                        mem_zip = BytesIO()
-                        to_return["downloaded_filename"] = 'multiple_downloads.zip'
-                        with ZipFile(mem_zip, 'w') as z:
-                            for i, f_details in enumerate(multiple_downloads):
-                                filename, file_content = f_details
-                                z.writestr(f'{i}_{filename}', file_content)
-                        to_return["downloaded_file"] = mem_zip.getvalue()
-
                 if content := await self._failsafe_get_content(page):
                     to_return['html'] = content
 
@@ -1199,6 +1186,20 @@ class Capture():
         finally:
             self.logger.debug('Finishing up capture.')
             if not capturing_sub:
+                if multiple_downloads:
+                    if len(multiple_downloads) == 1:
+                        to_return["downloaded_filename"] = multiple_downloads[0][0]
+                        to_return["downloaded_file"] = multiple_downloads[0][1]
+                    else:
+                        # we have multiple downloads, making it a zip, make sure the filename is unique
+                        mem_zip = BytesIO()
+                        to_return["downloaded_filename"] = f'{self.uuid}_multiple_downloads.zip'
+                        with ZipFile(mem_zip, 'w') as z:
+                            for i, f_details in enumerate(multiple_downloads):
+                                filename, file_content = f_details
+                                z.writestr(f'{i}_{filename}', file_content)
+                        to_return["downloaded_file"] = mem_zip.getvalue()
+
                 try:
                     to_return['storage'] = await self._failsafe_get_storage()
                     to_return['cookies'] = await self._failsafe_get_cookies()
@@ -1241,6 +1242,8 @@ class Capture():
                 return await self.context.storage_state(indexed_db=True)
         except (TimeoutError, asyncio.TimeoutError):
             self.logger.warning("Unable to get storage (timeout).")
+        except Error as e:
+            self.logger.warning(f"Unable to get storage: {e}")
         return None
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
