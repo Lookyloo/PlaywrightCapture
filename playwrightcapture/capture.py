@@ -935,6 +935,7 @@ class Capture():
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
+        errors: list[str] = []
         got_favicons = False
 
         # We don't need to be super strict on the lock, as it simply triggers a wait for network idle before stoping the capture
@@ -997,6 +998,7 @@ class Capture():
             except Error as e:
                 self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
                 self.should_retry = True
+                to_return['error'] = f'Unable to create new page: {e}'
                 return to_return
 
             if allow_tracking:
@@ -1050,8 +1052,8 @@ class Capture():
                             error_msg = download.failure()
                             if not error_msg:
                                 raise e
-                            to_return['error'] = f"Error while downloading: {error_msg}"
-                            self.logger.info(to_return['error'])
+                            errors.append(f"Error while downloading: {error_msg}")
+                            self.logger.info(f'Error while downloading: {error_msg}')
                             self.should_retry = True
                         except Exception:
                             raise e
@@ -1137,7 +1139,7 @@ class Capture():
                             if consecutive_errors >= 5:
                                 # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
                                 self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
-                                to_return['error'] = "Got more than 5 consecutive errors while capturing children"
+                                errors.append("Got more than 5 consecutive errors while capturing children")
                                 self.should_retry = True
                                 break
 
@@ -1149,19 +1151,19 @@ class Capture():
                                 self.logger.info(f'Unable to go back: {e}.')
 
         except PlaywrightTimeoutError as e:
-            to_return['error'] = f"The capture took too long - {e.message}"
+            errors.append(f"The capture took too long - {e.message}")
             self.should_retry = True
         except (asyncio.TimeoutError, TimeoutError):
-            to_return['error'] = "Something in the capture took too long"
+            errors.append("Something in the capture took too long")
             self.should_retry = True
         except TargetClosedError as e:
-            to_return['error'] = f"The target was closed - {e}"
+            errors.append(f"The target was closed - {e}")
             self.should_retry = True
         except Error as e:
-            # NOTE: there are a lot of errors that look like duplicates and they are trggered at different times in the process.
-            # it is tricky to figure our which one whouls (and should not) trigger a retry. Below is our best guess and it will change over time.
+            # NOTE: there are a lot of errors that look like duplicates and they are triggered at different times in the process.
+            # it is tricky to figure our which one should (and should not) trigger a retry. Below is our best guess and it will change over time.
             self._update_exceptions(e)
-            to_return['error'] = e.message
+            errors.append(e.message)
             to_return['error_name'] = e.name
             # TODO: check e.message and figure out if it is worth retrying or not.
             # NOTE: e.name is generally (always?) "Error"
@@ -1170,6 +1172,7 @@ class Capture():
             elif self._retry_network_error(e) or self._retry_browser_error(e):
                 # this one sounds like something we can retry...
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
+                errors.append(f'Issue with {url}: {e.message}')
                 self.should_retry = True
             else:
                 # Unexpected ones
@@ -1177,9 +1180,10 @@ class Capture():
         except Exception as e:
             # we may get a non-playwright exception to.
             # The ones we try to handle here should be treated as if they were.
-            to_return['error'] = str(e)
-            if to_return['error'] in ['Connection closed while reading from the driver']:
+            errors.append(str(e))
+            if str(e) in ['Connection closed while reading from the driver']:
                 self.logger.info(f'Issue with {url} (retrying): {e}')
+                errors.append(f'Issue with {url}: {e}')
                 self.should_retry = True
             else:
                 raise e
@@ -1201,15 +1205,31 @@ class Capture():
                         to_return["downloaded_file"] = mem_zip.getvalue()
 
                 try:
-                    to_return['storage'] = await self._failsafe_get_storage()
-                    to_return['cookies'] = await self._failsafe_get_cookies()
-                    self.logger.debug('Done with cookies and storage.')
-                except Exception as e:
-                    if 'error' not in to_return:
-                        to_return['error'] = f'Unable to get the storage: {e}'
+                    async with timeout(15):
+                        to_return['cookies'] = await self.context.cookies()
+                except (TimeoutError, asyncio.TimeoutError):
+                    self.logger.warning("Unable to get cookies (timeout).")
+                    errors.append("Unable to get the cookies (timeout).")
+                    self.should_retry = True
+                except Error as e:
+                    self.logger.warning(f"Unable to get cookies: {e}")
+                    errors.append(f'Unable to get the cookies: {e}')
+                    self.should_retry = True
+
+                try:
+                    async with timeout(15):
+                        to_return['storage'] = await self.context.storage_state(indexed_db=True)
+                except (TimeoutError, asyncio.TimeoutError):
+                    self.logger.warning("Unable to get storage (timeout).")
+                    errors.append("Unable to get the storage (timeout).")
+                    self.should_retry = True
+                except Error as e:
+                    self.logger.warning(f"Unable to get the storage: {e}")
+                    errors.append(f'Unable to get the storage: {e}')
+                    self.should_retry = True
                 # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
-                    async with timeout(60):
+                    async with timeout(30):
                         page.remove_listener("requestfinished", store_request)
                         await page.close(reason="Closing the page because the capture finished.")
                         self.logger.debug('Page closed.')
@@ -1220,31 +1240,15 @@ class Capture():
                         self.logger.debug('Got HAR.')
                 except (TimeoutError, asyncio.TimeoutError):
                     self.logger.warning("Unable to close page and context at the end of the capture.")
+                    errors.append("Unable to close page and context at the end of the capture.")
                     self.should_retry = True
                 except Exception as e:
                     self.logger.warning(f"Other exception while finishing up the capture: {e}.")
-                    if 'error' not in to_return:
-                        to_return['error'] = f'Unable to generate HAR file: {e}'
+                    errors.append(f'Unable to generate HAR file: {e}')
         self.logger.debug('Capture done')
+        if errors:
+            to_return['error'] = '\n'.join(errors)
         return to_return
-
-    async def _failsafe_get_cookies(self) -> list[Cookie] | None:
-        try:
-            async with timeout(15):
-                return await self.context.cookies()
-        except (TimeoutError, asyncio.TimeoutError):
-            self.logger.warning("Unable to get cookies (timeout).")
-        return None
-
-    async def _failsafe_get_storage(self) -> StorageState | None:
-        try:
-            async with timeout(15):
-                return await self.context.storage_state(indexed_db=True)
-        except (TimeoutError, asyncio.TimeoutError):
-            self.logger.warning("Unable to get storage (timeout).")
-        except Error as e:
-            self.logger.warning(f"Unable to get storage: {e}")
-        return None
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         self.logger.debug("Capturing a screenshot of the full page.")
@@ -1296,7 +1300,7 @@ class Capture():
         tries = 3
         while tries:
             try:
-                async with timeout(30):
+                async with timeout(15):
                     return await page.content()
             except (Error, TimeoutError, asyncio.TimeoutError):
                 self.logger.debug('Unable to get page content, trying again.')
