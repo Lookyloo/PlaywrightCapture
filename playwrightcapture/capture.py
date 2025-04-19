@@ -37,6 +37,7 @@ from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
+from .socks5dnslookup import Socks5Resolver
 
 from zoneinfo import available_timezones
 all_timezones_set = available_timezones()
@@ -144,6 +145,7 @@ class Capture():
 
     def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
                  proxy: str | dict[str, str] | None=None,
+                 socks5_dns_resolver: str | list[str] | None=None,
                  general_timeout_in_sec: int | None=None, loglevel: str | int='INFO',
                  uuid: str | None=None, headless: bool=True):
         """Captures a page with Playwright.
@@ -151,6 +153,7 @@ class Capture():
         :param browser: The browser to use for the capture.
         :param device_name: The pre-defined device to use for the capture (from playwright).)
         :param proxy: The external proxy to use for the capture.
+        :param socks5_dns_resolver: DNS resolver to use for the socks5 proxy and fill the HAR file.
         :param general_timeout_in_sec: The general timeout for the capture, including children.
         :param loglevel: Python loglevel
         :param uuid: The UUID of the capture.
@@ -177,6 +180,7 @@ class Capture():
         self.device_name: str | None = device_name
         self.headless: bool = headless
         self.proxy: ProxySettings = {}
+        self.socks5_dns_resolver: str | list[str] | None = socks5_dns_resolver
         if proxy:
             if isinstance(proxy, str):
                 self.proxy = self.__prepare_proxy_playwright(proxy)
@@ -1238,6 +1242,12 @@ class Capture():
                         with open(self._temp_harfile.name) as _har:
                             to_return['har'] = json.load(_har)
                         self.logger.debug('Got HAR.')
+                    if (to_return.get('har') and self.proxy and self.proxy.get('server')
+                            and self.proxy['server'].startswith('socks5')):
+                        # Only if the capture was not done via a socks5 proxy
+                        if har := to_return['har']:  # Could be None
+                            async with timeout(30):
+                                await self.socks5_resolver(har)
                 except (TimeoutError, asyncio.TimeoutError):
                     self.logger.warning("Unable to close page and context at the end of the capture.")
                     errors.append("Unable to close page and context at the end of the capture.")
@@ -1713,3 +1723,31 @@ class Capture():
         return to_return
 
     # END FAVICON EXTRACTOR
+
+    # ##### Run DNS resolution over socks5 proxy #####
+    # This is only use when the capture is done over a socks5 proxy, and not on a .onion
+    # We get the HAR file, iterate over the entries an update the IPs
+
+    async def socks5_resolver(self, harfile: dict[str, Any]) -> None:
+        resolver = Socks5Resolver(logger=self.logger, socks5_proxy=self.proxy['server'],
+                                  dns_resolver=self.socks5_dns_resolver)
+        # get all the hostnames from the HAR file
+        hostnames = set()
+        for entry in harfile['log']['entries']:
+            if entry['request']['url']:
+                parsed = urlparse(entry['request']['url'])
+                if parsed.netloc and not parsed.netloc.endswith('onion'):
+                    hostnames.add(parsed.netloc)
+        # use the same technique as in lookyloo to resolve many domains in parallel
+        semaphore = asyncio.Semaphore(20)
+        all_requests = [resolver.resolve(hostname, semaphore) for hostname in hostnames]
+        await asyncio.gather(*all_requests)
+        self.logger.debug('Resolved all domains through the proxy.')
+        for entry in harfile['log']['entries']:
+            if entry['request']['url']:
+                parsed = urlparse(entry['request']['url'])
+                if parsed.netloc and not parsed.netloc.endswith('onion'):
+                    answer = resolver.get_cache(parsed.netloc)
+                    if answer:
+                        entry['serverIPAddress'] = {str(b) for b in answer}.pop()
+        self.logger.debug('Done updating HAR file')
