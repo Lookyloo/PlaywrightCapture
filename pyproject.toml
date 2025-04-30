@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.29.0"
+version = "1.29.1"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
