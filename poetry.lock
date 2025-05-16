@@ -206,7 +206,7 @@ description = "LTS Port of Python audioop"
 optional = true
 python-versions = ">=3.13"
 groups = ["main"]
-markers = "extra == \"recaptcha\" and python_version >= \"3.13\""
+markers = "python_version >= \"3.13\" and extra == \"recaptcha\""
 files = [
     {file = "audioop_lts-0.2.1-cp313-abi3-macosx_10_13_universal2.whl", hash = "sha256:fd1345ae99e17e6910f47ce7d52673c6a1a70820d78b67de1b7abb3af29c426a"},
     {file = "audioop_lts-0.2.1-cp313-abi3-macosx_10_13_x86_64.whl", hash = "sha256:e175350da05d2087e12cea8e72a70a1a8b14a17e92ed2022952a4419689ede5e"},
@@ -1539,11 +1539,30 @@ description = "Manipulate audio with an simple and easy high level interface"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"recaptcha\""
+markers = "python_version == \"3.9\" and extra == \"recaptcha\""
 files = [
     {file = "pydub-0.25.1-py2.py3-none-any.whl", hash = "sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6"},
     {file = "pydub-0.25.1.tar.gz", hash = "sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f"},
 ]
+
+[[package]]
+name = "pydub-ng"
+version = "0.2.0"
+description = "Manipulate audio with a simple and easy high level interface"
+optional = true
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "python_version >= \"3.10\" and extra == \"recaptcha\""
+files = [
+    {file = "pydub_ng-0.2.0-py3-none-any.whl", hash = "sha256:dc3bf2b13152fc94c1110d926b0223c65305a71e81bba3a7936772923833d0d3"},
+    {file = "pydub_ng-0.2.0.tar.gz", hash = "sha256:d5e82e59395afa5a36a329b3d19651143f8281afad9c0b13d8a2bb646c5a3f01"},
+]
+
+[package.dependencies]
+audioop-lts = {version = ">=0.2.1", markers = "python_version >= \"3.13\""}
+
+[package.extras]
+dev = ["build (>=1.0.0)", "pytest (>=8.0.0)", "pytest-cov (>=4.1.0)", "pytest-datadir (>=1.4.1)", "ruff (>=0.1.0)"]
 
 [[package]]
 name = "pyee"
@@ -2110,9 +2129,9 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [extras]
-recaptcha = ["SpeechRecognition", "pydub"]
+recaptcha = ["SpeechRecognition", "pydub", "pydub-ng"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9"
-content-hash = "1791f6203cfbbb71694cfa0b146c9f08992e6a9bc3a34ea3502f2799f4934ed5"
+content-hash = "daa79489599bf37f9f328ca04e46bc13d7742b32d44d813efab40c250f5e360d"
