@@ -60,7 +60,10 @@ if TYPE_CHECKING:
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 try:
-    from pydub import AudioSegment
+    if sys.version_info < (3, 10):
+        from pydub import AudioSegment  # type: ignore[attr-defined]
+    else:
+        from pydub import AudioSegment
     from speech_recognition import Recognizer, AudioFile
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
