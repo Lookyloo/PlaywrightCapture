@@ -18,10 +18,10 @@ dependencies = [
     "w3lib (>=2.3.1)",
     "tzdata (>=2025.2)",
     "playwright-stealth (>=1.0.6)",
-    "setuptools (>=80.8.0)",
+    "setuptools (>=80.9.0)",
     "puremagic (>=1.29)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
-    "aiohttp[speedups] (>=3.11.18)",
+    "aiohttp[speedups] (>=3.12.7)",
     "aiohttp-socks (>=0.10.1)",
     "typing-extensions (>=4.12.2,<5.0.0) ; python_version < \"3.12\"",
     "dnspython (>=2.7.0,<3.0.0)",
@@ -50,9 +50,9 @@ recaptcha = [
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20250516"
-pytest = "^8.3.5"
-mypy = "^1.15.0"
-types-dateparser = "^1.2.0.20250516"
+pytest = "^8.4.0"
+mypy = "^1.16.0"
+types-dateparser = "^1.2.0.20250601"
 types-pytz = "^2025.2.0.20250516"
 
 
