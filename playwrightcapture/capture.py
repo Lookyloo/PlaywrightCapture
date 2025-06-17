@@ -1547,6 +1547,7 @@ class Capture():
                 'net::ERR_INVALID_REDIRECT',
                 'net::ERR_NAME_NOT_RESOLVED',
                 'net::ERR_NETWORK_ACCESS_DENIED',
+                'net::ERR_PROXY_CONNECTION_FAILED',
                 'net::ERR_QUIC_PROTOCOL_ERROR',
                 'net::ERR_SOCKET_NOT_CONNECTED',
                 'net::ERR_SOCKS_CONNECTION_FAILED',
