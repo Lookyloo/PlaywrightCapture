@@ -1303,21 +1303,18 @@ pyee = ">=13,<14"
 
 [[package]]
 name = "playwright-stealth"
-version = "1.0.6"
-description = "playwright stealth"
+version = "2.0.0"
+description = "Make your playwright instance stealthy"
 optional = false
-python-versions = ">=3, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "playwright-stealth-1.0.6.tar.gz", hash = "sha256:b504d951d00fac755c7d13665a29611d415180510bd7d23f14ebc89439ba2043"},
-    {file = "playwright_stealth-1.0.6-py3-none-any.whl", hash = "sha256:b1b2bcf58eb6859aa53d42c49b91c4e27b74a6d13fc3d0c85eea513dd55efda3"},
+    {file = "playwright_stealth-2.0.0-py3-none-any.whl", hash = "sha256:9eb3af1fd21619aac9fdd13a4a08141ed67159ac6310a94f7d2f758ba0cbe179"},
+    {file = "playwright_stealth-2.0.0.tar.gz", hash = "sha256:4f44d416d4226689895a4d1cfb40e8d137216c0c9710ea8f84bae2dbf1186fc5"},
 ]
 
 [package.dependencies]
-playwright = "*"
-
-[package.extras]
-test = ["pytest"]
+playwright = ">=1.0.0,<2.0.0"
 
 [[package]]
 name = "pluggy"
@@ -1626,14 +1623,14 @@ windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "pytest"
-version = "8.4.0"
+version = "8.4.1"
 description = "pytest: simple powerful testing with Python"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "pytest-8.4.0-py3-none-any.whl", hash = "sha256:f40f825768ad76c0977cbacdf1fd37c6f7a468e460ea6a0636078f8972d4517e"},
-    {file = "pytest-8.4.0.tar.gz", hash = "sha256:14d920b48472ea0dbf68e45b96cd1ffda4705f33307dcc86c676c1b5104838a6"},
+    {file = "pytest-8.4.1-py3-none-any.whl", hash = "sha256:539c70ba6fcead8e78eebbf1115e8b589e7565830d7d006a8723f19ac8a0afb7"},
+    {file = "pytest-8.4.1.tar.gz", hash = "sha256:7c67fd69174877359ed9371ec3af8a3d2b04741818c51e5e99cc1742251fa93c"},
 ]
 
 [package.dependencies]
@@ -2176,5 +2173,5 @@ recaptcha = ["SpeechRecognition", "pydub", "pydub-ng"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.9"
-content-hash = "4026a5c65195d5aad12ae98e29da76593f5419f1fead30857c8d4cb9bb2e5c38"
+python-versions = ">=3.9,<4.0"
+content-hash = "53600b77582901738c3fcce441c2cc0210a83790f623c2d0999f3d1d97819c71"

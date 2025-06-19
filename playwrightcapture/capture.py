@@ -13,12 +13,11 @@ import sys
 import time
 
 from base64 import b64decode
-from dataclasses import dataclass
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal, TYPE_CHECKING
-from collections.abc import MutableMapping, Iterator
+from collections.abc import MutableMapping
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
 
@@ -31,7 +30,7 @@ from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_async, StealthConfig  # type: ignore[attr-defined]
+from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS  # type: ignore[attr-defined]
 from puremagic import PureError, from_string
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -101,41 +100,10 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
 
 
 # good test pages:
-# https://bot.incolumitas.com/
+# https://kaliiiiiiiiii.github.io/brotector/?crash=false
+# https://www.browserscan.net/bot-detection
+# https://fingerprint.com/products/bot-detection/
 # https://fingerprintjs.github.io/BotD/main/
-
-@dataclass
-class PCStealthConfig(StealthConfig):
-
-    @property
-    def enabled_scripts(self) -> Iterator[str]:
-        self.chrome_app = True
-        self.chrome_csi = True
-        self.chrome_runtime = True
-        self.chrome_load_times = True
-        self.navigator_plugins = True
-        self.hairline = True
-        self.iframe_content_window = True
-        self.media_codecs = True
-
-        # permissions are handled directly in playwright
-        self.navigator_permissions = False
-        # Platform is correct now
-        self.navigator_platform = False
-        # probably useless, but it will fallback to 4 regardless
-        self.navigator_hardware_concurrency = 4
-        # Webgl vendor is correct now
-        self.webgl_vendor = False
-        # Set by the viewport
-        self.outerdimensions = False
-
-        # Not working with Playwright 1.45+
-        self.navigator_languages = False  # Causes issue
-        self.navigator_user_agent = False  # Causes issues
-        self.navigator_vendor = False  # Causes issues
-
-        yield from super().enabled_scripts
-
 
 class Capture():
 
@@ -491,6 +459,52 @@ class Capture():
             **device_context_settings
         )
         self.context.set_default_timeout(self._capture_timeout * 1000)
+
+        # very quick and dirty get a platform from the UA so it's not always Win32
+        # This this is deprecated and not very important.
+        # Ref: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/platform
+        if any(x in ua.lower() for x in ['windows', 'win32', 'win64']):
+            _platform = 'Win32'
+        elif any(x in ua.lower() for x in ['macintosh', 'mac os x', 'macos']):
+            _platform = 'MacIntel'
+        elif any(x in ua.lower() for x in ['linux', 'ubuntu']):
+            _platform = 'Linux x86_64'
+        else:
+            _platform = 'Win32'
+
+        # Enable stealth mode
+        stealth = Stealth(
+            **{**ALL_EVASIONS_DISABLED_KWARGS,  # type: ignore[arg-type]
+               'chrome_app': True,
+               'chrome_csi': True,
+               'chrome_load_times': True,
+               'chrome_runtime': True,
+               'hairline': True,
+               'iframe_content_window': True,
+               'media_codecs': True,
+               # 'navigator_hardware_concurrency': False,
+               # 'navigator_languages': False,  # handled by playwright directly
+               # 'navigator_permissions': False,  # handled by playwright directly
+               'navigator_platform': True,
+               'navigator_plugins': True,
+               # 'navigator_user_agent': True,  # Set by playwright
+               # 'navigator_vendor': False,  # It's set correctly by playwright
+               'navigator_webdriver': True,
+               # 'sec_ch_ua': True,
+               # 'webgl_vendor': False,  # It's set correctly by playwright
+
+               # ## Overwrite the default values
+               'navigator_languages_override': None,
+               'navigator_platform_override': _platform,
+               # 'navigator_user_agent_override': ua,  # Already Set in playwright context
+               # 'navigator_vendor_override': None,
+               # 'sec_ch_ua_override': Stealth._get_greased_chrome_sec_ua_ch(ua),
+               # 'webgl_renderer_override': None,
+               # 'webgl_vendor_override': None,
+               })
+
+        # stealth.hook_playwright_context(self.playwright)
+        await stealth.apply_stealth_async(self.context)
 
         if self.cookies:
             try:
@@ -1002,6 +1016,8 @@ class Capture():
             capturing_sub = False
             try:
                 page = await self.context.new_page()
+                # client = await page.context.new_cdp_session(page)
+                # await client.detach()
             except Error as e:
                 self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
                 self.should_retry = True
@@ -1020,8 +1036,6 @@ class Capture():
                 await self.__dialog_alert_dialog_clickthrough(page)
                 await self.__dialog_clickthrough(page)
                 await self.__dialog_tarteaucitron_clickthrough(page)
-
-            await stealth_async(page, PCStealthConfig())
 
             page.set_default_timeout((self._capture_timeout - 2) * 1000)
             # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher

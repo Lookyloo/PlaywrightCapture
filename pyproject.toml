@@ -7,7 +7,7 @@ authors = [
 ]
 license = "BSD-3-Clause"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9,<4.0"
 
 dynamic = [ "classifiers" ]
 
@@ -17,7 +17,7 @@ dependencies = [
     "beautifulsoup4[charset-normalizer,lxml] (>=4.13.4)",
     "w3lib (>=2.3.1)",
     "tzdata (>=2025.2)",
-    "playwright-stealth (>=1.0.6)",
+    "playwright-stealth (>=2)",
     "setuptools (>=80.9.0)",
     "puremagic (>=1.29)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
@@ -50,7 +50,7 @@ recaptcha = [
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20250516"
-pytest = "^8.4.0"
+pytest = "^8.4.1"
 mypy = "^1.16.1"
 types-dateparser = "^1.2.0.20250601"
 types-pytz = "^2025.2.0.20250516"
