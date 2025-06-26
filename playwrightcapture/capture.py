@@ -823,7 +823,7 @@ class Capture():
             # Same technique as: https://github.com/NikolaiT/uncaptcha3
             if CAN_SOLVE_CAPTCHA:
                 try:
-                    if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible(timeout=3000)
+                    if (await page.locator("//iframe[@title='reCAPTCHA']").first.is_visible()
                             and await page.locator("//iframe[@title='reCAPTCHA']").first.is_enabled(timeout=2000)):
                         self.logger.info('Found a captcha')
                         await self._recaptcha_solver(page)
@@ -1387,7 +1387,7 @@ class Capture():
         if not recaptcha_init_frame:
             return False
         try:
-            if await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").is_visible(timeout=5000):
+            if await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").is_visible():
                 await recaptcha_init_frame.get_by_role("checkbox", name="I'm not a robot").click()
             else:
                 self.logger.info('Checkbox not visible.')
