@@ -118,7 +118,8 @@ class Capture():
                  proxy: str | dict[str, str] | None=None,
                  socks5_dns_resolver: str | list[str] | None=None,
                  general_timeout_in_sec: int | None=None, loglevel: str | int='INFO',
-                 uuid: str | None=None, headless: bool=True):
+                 uuid: str | None=None, headless: bool=True,
+                 *, init_script: str | None=None):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -129,6 +130,7 @@ class Capture():
         :param loglevel: Python loglevel
         :param uuid: The UUID of the capture.
         :param headless: Whether to run the browser in headless mode. WARNING: requires to run in a graphical environment.
+        :param init_script: An optional JavaScript that will be executed on each page - See https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-init-script
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
@@ -178,6 +180,8 @@ class Capture():
         self._locale: str = 'en-US'
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
         self._java_script_enabled = True
+
+        self._init_script = init_script
 
     def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
         splitted = urlsplit(proxy)
@@ -459,6 +463,9 @@ class Capture():
             **device_context_settings
         )
         self.context.set_default_timeout(self._capture_timeout * 1000)
+
+        if self._init_script:
+            await self.context.add_init_script(script=self._init_script)
 
         # very quick and dirty get a platform from the UA so it's not always Win32
         # This this is deprecated and not very important.
