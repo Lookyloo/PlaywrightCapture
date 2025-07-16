@@ -1361,7 +1361,11 @@ class Capture():
             return href
 
         urls: set[str] = set()
-        soup = BeautifulSoup(rendered_html, "lxml")
+        try:
+            soup = BeautifulSoup(rendered_html, "lxml")
+        except Exception as e:
+            self.logger.info(f'Unable to parse HTML: {e}')
+            soup = BeautifulSoup(rendered_html, "html.parser")
 
         rendered_hostname = urlparse(rendered_url).hostname
         # The simple ones: the links.
