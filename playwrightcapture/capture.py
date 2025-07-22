@@ -498,7 +498,7 @@ class Capture():
                # 'navigator_vendor': False,  # It's set correctly by playwright
                'navigator_webdriver': True,
                # 'sec_ch_ua': True,
-               # 'webgl_vendor': False,  # It's set correctly by playwright
+               'webgl_vendor': True,  # It's not net correctly by playwright in headless mode.
 
                # ## Overwrite the default values
                'navigator_languages_override': None,
@@ -508,10 +508,10 @@ class Capture():
                # 'sec_ch_ua_override': Stealth._get_greased_chrome_sec_ua_ch(ua),
                # 'webgl_renderer_override': None,
                # 'webgl_vendor_override': None,
-               })
 
-        # stealth.hook_playwright_context(self.playwright)
-        await stealth.apply_stealth_async(self.context)
+               # For testing
+               # 'script_logging': True,
+               })
 
         if self.cookies:
             try:
@@ -558,6 +558,9 @@ class Capture():
             await self.context.grant_permissions(firefox_permissions)
         elif self.browser_name == 'chromium':
             await self.context.grant_permissions(chromium_permissions)
+
+        # Apply stealth
+        await stealth.apply_stealth_async(self.context)
 
     async def __cloudflare_bypass_attempt(self, page: Page) -> None:
         # This method aims to bypass cloudflare checks, but it mostly doesn't work.
