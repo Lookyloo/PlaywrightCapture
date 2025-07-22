@@ -299,7 +299,7 @@ class Capture():
         return self._cookies
 
     @cookies.setter
-    def cookies(self, cookies: list[dict[str, Any]] | None) -> None:
+    def cookies(self, cookies: list[SetCookieParam | dict[str, Any]] | None) -> None:
         '''Cookies to send along to the initial request.
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
