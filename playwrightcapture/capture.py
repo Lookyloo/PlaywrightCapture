@@ -46,18 +46,6 @@ if sys.version_info < (3, 11):
 else:
     from asyncio import timeout
 
-if sys.version_info < (3, 12):
-    from typing_extensions import TypedDict
-else:
-    from typing import TypedDict
-
-if TYPE_CHECKING:
-    from playwright._impl._api_structures import (SetCookieParam, Geolocation,
-                                                  HttpCredentials, Headers,
-                                                  ViewportSize, Cookie,
-                                                  ProxySettings, StorageState)
-    BROWSER = Literal['chromium', 'firefox', 'webkit']
-
 try:
     if sys.version_info < (3, 10):
         from pydub import AudioSegment  # type: ignore[attr-defined]
@@ -67,6 +55,54 @@ try:
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
+
+# ####
+# This bit is required as long as we need to support python < 3.12, stop removing it, you idiot
+# That's the runtime failure: https://github.com/ail-project/lacus/actions/runs/16447900822/job/46484807036
+# And the MyPy failure: https://github.com/ail-project/LacusCore/actions/runs/16447753492/job/46484287947
+if sys.version_info < (3, 12):
+    from typing_extensions import TypedDict
+else:
+    from typing import TypedDict
+
+# These two classes are copies of te ones in Playwright, we need them until we can discard python 3.11
+# They come from this file:
+#   https://github.com/microsoft/playwright-python/blob/main/playwright/_impl/_api_structures.py
+
+
+class SetCookieParam(TypedDict, total=False):
+    name: str
+    value: str
+    url: str
+    domain: str
+    path: str
+    expires: float
+    httpOnly: bool
+    secure: bool
+    sameSite: Literal["Lax", "None", "Strict"]
+    partitionKey: str
+
+
+class Cookie(TypedDict, total=False):
+    name: str
+    value: str
+    domain: str
+    path: str
+    expires: float
+    httpOnly: bool
+    secure: bool
+    sameSite: Literal["Lax", "None", "Strict"]
+    partitionKey: str
+
+# ####################################
+
+
+if TYPE_CHECKING:
+    from playwright._impl._api_structures import (Geolocation,
+                                                  HttpCredentials, Headers,
+                                                  ViewportSize,
+                                                  ProxySettings, StorageState)
+    BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 
 class CaptureResponse(TypedDict, total=False):
@@ -515,7 +551,9 @@ class Capture():
 
         if self.cookies:
             try:
-                await self.context.add_cookies(self.cookies)
+                # NOTE: Ignore type until we can use python 3.12 + only
+                # playwrightcapture.capture.SetCookieParam == playwright._impl._api_structures.SetCookieParam
+                await self.context.add_cookies(self.cookies)  # type: ignore[arg-type]
             except Exception:
                 self.logger.exception(f'Unable to set cookies: {self.cookies}')
 
@@ -1237,7 +1275,9 @@ class Capture():
 
                 try:
                     async with timeout(15):
-                        to_return['cookies'] = await self.context.cookies()
+                        # NOTE: Ignore type until we can use python 3.12 + only
+                        # playwrightcapture.capture.SetCookieParam == playwright._impl._api_structures.SetCookieParam
+                        to_return['cookies'] = await self.context.cookies()  # type: ignore[typeddict-item]
                 except (TimeoutError, asyncio.TimeoutError):
                     self.logger.warning("Unable to get cookies (timeout).")
                     errors.append("Unable to get the cookies (timeout).")
