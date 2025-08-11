@@ -52,7 +52,7 @@ recaptcha = [
 types-beautifulsoup4 = "^4.12.0.20250516"
 pytest = "^8.4.1"
 mypy = "^1.17.1"
-types-dateparser = "^1.2.2.20250627"
+types-dateparser = "^1.2.2.20250809"
 types-pytz = "^2025.2.0.20250516"
 
 
