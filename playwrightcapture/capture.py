@@ -234,8 +234,6 @@ class Capture():
 
     async def __aenter__(self) -> Capture:
         '''Launch the browser'''
-        self._temp_harfile = NamedTemporaryFile(delete=False)
-
         self.playwright = await async_playwright().start()
 
         if self.device_name:
@@ -255,11 +253,12 @@ class Capture():
         # Set of URLs that were captured in that context
         self._already_captured: set[str] = set()
 
+        # Create the temporary file to store the HAR content.
+        self._temp_harfile = NamedTemporaryFile(delete=False, prefix="playwright_capture_har", suffix=".json")
+
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
-        if hasattr(self, '_temp_harfile'):
-            os.unlink(self._temp_harfile.name)
 
         try:
             await self.browser.close(reason="Closing browser at the end of the capture.")
@@ -271,6 +270,13 @@ class Capture():
         except Exception as e:
             # this should't happen, but just in case it does...
             self.logger.info(f'Unable to stop playwright: {e}')
+
+        if hasattr(self, '_temp_harfile'):
+            try:
+                os.unlink(self._temp_harfile.name)
+            except Exception as e:
+                self.logger.warning(f'Unable to remove temp HAR file {self._temp_harfile.name}: {e}')
+
         return True
 
     @property
