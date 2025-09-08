@@ -25,7 +25,8 @@ dependencies = [
     "aiohttp-socks (>=0.10.1)",
     "typing-extensions (>=4.12.2,<5.0.0) ; python_version < \"3.12\"",
     "dnspython (>=2.7.0,<3.0.0)",
-    "python-socks (>=2.7.1,<3.0.0)"
+    "python-socks (>=2.7.1,<3.0.0)",
+    "rfc3161-client (>=1.0.4,<2.0.0)"
 ]
 
 [project.urls]
@@ -50,7 +51,7 @@ recaptcha = [
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20250516"
-pytest = "^8.4.1"
+pytest = "^8.4.2"
 mypy = "^1.17.1"
 types-dateparser = "^1.2.2.20250809"
 types-pytz = "^2025.2.0.20250809"

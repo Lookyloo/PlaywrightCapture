@@ -12,7 +12,7 @@ import re
 import sys
 import time
 
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
@@ -32,6 +32,7 @@ from playwright.async_api import async_playwright, Frame, Error, Page, Download,
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS  # type: ignore[attr-defined]
 from puremagic import PureError, from_string
+from rfc3161_client import TimestampRequestBuilder, TimeStampRequest, HashAlgorithm
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
@@ -119,6 +120,10 @@ class CaptureResponse(TypedDict, total=False):
     downloaded_file: bytes | None
     children: list[CaptureResponse] | None
 
+    # if the capture is triggered with with_trusted_timestamps, the response contains a
+    # dict[<entry name>] = '<base64 encoded timestamp response>'
+    trusted_timestamps: dict[str, str] | None
+
     # One day, playwright will support getting the favicon from the capture itself
     # favicon: Optional[bytes]
     # in the meantime, we need a workaround: https://github.com/Lookyloo/PlaywrightCapture/issues/45
@@ -133,6 +138,13 @@ class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
         if self.extra:
             return '[{}] {}'.format(self.extra['uuid'], msg), kwargs
         return msg, kwargs
+
+
+class TrustedTimestampSettings(TypedDict, total=False):
+
+    url: str
+    hash_algorithm: HashAlgorithm | None
+    # NOTE: can add other settings such as auth mechanism, if needed.
 
 
 # good test pages:
@@ -155,7 +167,7 @@ class Capture():
                  socks5_dns_resolver: str | list[str] | None=None,
                  general_timeout_in_sec: int | None=None, loglevel: str | int='INFO',
                  uuid: str | None=None, headless: bool=True,
-                 *, init_script: str | None=None):
+                 *, init_script: str | None=None, tt_settings: TrustedTimestampSettings | None=None):
         """Captures a page with Playwright.
 
         :param browser: The browser to use for the capture.
@@ -218,6 +230,8 @@ class Capture():
         self._java_script_enabled = True
 
         self._init_script = init_script
+
+        self.tt_settings = tt_settings
 
     def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
         splitted = urlsplit(proxy)
@@ -1007,6 +1021,7 @@ class Capture():
                            with_screenshot: bool=True,
                            with_favicon: bool=False,
                            allow_tracking: bool=False,
+                           with_trusted_timestamps: bool=False,
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
@@ -1199,6 +1214,11 @@ class Capture():
                                         rendered_hostname_only=rendered_hostname_only,
                                         max_depth_capture_time=max_capture_time,
                                         with_screenshot=with_screenshot)
+                                    if with_trusted_timestamps:
+                                        try:
+                                            await self._get_trusted_timestamps(child_capture)
+                                        except Exception as e:
+                                            self.logger.warning(f'Unable to get the trusted timestamps for the clild capture : {e}.')
                                     to_return['children'].append(child_capture)  # type: ignore[union-attr]
                             except (TimeoutError, asyncio.TimeoutError):
                                 self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
@@ -1331,7 +1351,55 @@ class Capture():
         self.logger.debug('Capture done')
         if errors:
             to_return['error'] = '\n'.join(errors)
+        if with_trusted_timestamps:
+            try:
+                await self._get_trusted_timestamps(to_return)
+            except Exception as e:
+                self.logger.warning(f'Unable to get trusted timestamps: {e}')
         return to_return
+
+    async def _get_trusted_timestamps(self, capture_response: CaptureResponse) -> None:
+        """Get trusted timestamps for the relevant values in the response"""
+        if not self.tt_settings:
+            self.logger.warning('The remote timestamper is not configured.')
+            return None
+        to_timestamp: dict[str, TimestampRequestBuilder] = {}
+        if last_redirected_url := capture_response.get('last_redirected_url'):
+            to_timestamp['last_redirected_url'] = TimestampRequestBuilder().data(last_redirected_url.encode())
+        if har := capture_response.get('har'):
+            to_timestamp['har'] = TimestampRequestBuilder().data(json.dumps(har).encode())
+        if storage := capture_response.get('storage'):
+            to_timestamp['storage'] = TimestampRequestBuilder().data(json.dumps(storage).encode())
+        if html := capture_response.get('html'):
+            to_timestamp['html'] = TimestampRequestBuilder().data(html.encode())
+        if png := capture_response.get('png'):
+            to_timestamp['png'] = TimestampRequestBuilder().data(png)
+        if downloaded_filename := capture_response.get('downloaded_filename'):
+            to_timestamp['downloaded_filename'] = TimestampRequestBuilder().data(downloaded_filename.encode())
+        if downloaded_file := capture_response.get('downloaded_file'):
+            to_timestamp['downloaded_file'] = TimestampRequestBuilder().data(downloaded_file)
+        # if potential_favicons := capture_response.get('potential_favicons'):
+        #    to_timestamp['potential_favicons'] = TimestampRequestBuilder().data(potential_favicons)
+
+        tt_requests: dict[str, TimeStampRequest] = {}
+        for k, trb in to_timestamp.items():
+            if h_algo := self.tt_settings.get('hash_algorithm'):
+                trb.hash_algorithm(h_algo)
+            tt_requests[k] = trb.build()
+
+        trusted_timestamps: dict[str, bytes] = {}
+        async with aiohttp.ClientSession() as session:
+            for k, tsr in tt_requests.items():
+                async with session.post(self.tt_settings['url'], data=tsr.as_bytes(),
+                                        headers={"Content-Type": "application/timestamp-query"}) as response:
+                    try:
+                        response.raise_for_status()
+                    except aiohttp.ClientResponseError as e:
+                        self.logger.warning(f'Unable to get Trusted Timestamp for {k}: {e}')
+                        continue
+                    trusted_timestamps[k] = await response.read()
+
+        capture_response['trusted_timestamps'] = {k: b64encode(v).decode() for k, v in trusted_timestamps.items()}
 
     async def _failsafe_get_screenshot(self, page: Page) -> bytes:
         self.logger.debug("Capturing a screenshot of the full page.")
