@@ -1389,7 +1389,13 @@ class Capture():
             tt_requests[k] = trb.build()
 
         trusted_timestamps: dict[str, bytes] = {}
-        async with aiohttp.ClientSession() as session:
+
+        connector = None
+        if self.proxy and self.proxy.get('server'):
+            connector = ProxyConnector.from_url(self.proxy['server'])
+
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             for k, tsr in tt_requests.items():
                 async with session.post(self.tt_settings['url'], data=tsr.as_bytes(),
                                         headers={"Content-Type": "application/timestamp-query"}) as response:
