@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import binascii
 # import hashlib
-import json
 import logging
 import os
 import random
@@ -24,6 +23,7 @@ from zipfile import ZipFile
 
 import aiohttp
 import dateparser
+import orjson
 
 from aiohttp_socks import ProxyConnector
 from bs4 import BeautifulSoup
@@ -426,7 +426,7 @@ class Capture():
             # Check if they are valid
             new_headers = {name.strip(): value.strip() for name, value in headers.items() if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()}
             if new_headers != headers:
-                self.logger.warning(f'Headers contains invalid values:\n{json.dumps(headers, indent=2)}')
+                self.logger.warning(f'Headers contains invalid values:\n{orjson.dumps(headers, option=orjson.OPT_INDENT_2).decode()}')
         else:
             # This shouldn't happen, but we also cannot ensure the calls leading to this are following the specs,
             # and playwright dislikes invalid HTTP headers so we rather drop them.
@@ -1333,8 +1333,8 @@ class Capture():
                         self.logger.debug('Page closed.')
                         await self.context.close(reason="Closing the context because the capture finished.")  # context needs to be closed to generate the HAR
                         self.logger.debug('Context closed.')
-                        with open(self._temp_harfile.name) as _har:
-                            to_return['har'] = json.load(_har)
+                        with open(self._temp_harfile.name, 'rb') as _har:
+                            to_return['har'] = orjson.loads(_har.read())
                         self.logger.debug('Got HAR.')
                     if (to_return.get('har') and self.proxy and self.proxy.get('server')
                             and self.proxy['server'].startswith('socks5')):
@@ -1368,9 +1368,9 @@ class Capture():
         if last_redirected_url := capture_response.get('last_redirected_url'):
             to_timestamp['last_redirected_url'] = TimestampRequestBuilder().data(last_redirected_url.encode())
         if har := capture_response.get('har'):
-            to_timestamp['har'] = TimestampRequestBuilder().data(json.dumps(har).encode())
+            to_timestamp['har'] = TimestampRequestBuilder().data(orjson.dumps(har))
         if storage := capture_response.get('storage'):
-            to_timestamp['storage'] = TimestampRequestBuilder().data(json.dumps(storage).encode())
+            to_timestamp['storage'] = TimestampRequestBuilder().data(orjson.dumps(storage))
         if html := capture_response.get('html'):
             to_timestamp['html'] = TimestampRequestBuilder().data(html.encode())
         if png := capture_response.get('png'):
