@@ -18,7 +18,7 @@ from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal, TYPE_CHECKING
 from collections.abc import MutableMapping
-from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, unquote_plus
+from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
 from zipfile import ZipFile
 
 import aiohttp
@@ -1179,7 +1179,7 @@ class Capture():
                     except Exception as e:
                         self.logger.warning(f'Unable to get favicons: {e}')
 
-                to_return['last_redirected_url'] = unquote_plus(page.url)
+                to_return['last_redirected_url'] = page.url
 
                 if with_screenshot:
                     to_return['png'] = await self._failsafe_get_screenshot(page)
