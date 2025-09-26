@@ -7,7 +7,7 @@ authors = [
 ]
 license = "BSD-3-Clause"
 readme = "README.md"
-requires-python = ">=3.9.2,<4.0"
+requires-python = ">=3.10,<4.0"
 
 dynamic = [ "classifiers" ]
 
@@ -45,8 +45,7 @@ classifiers=[
 
 [project.optional-dependencies]
 recaptcha = [
-    "pydub (>=0.25.1) ; python_version < \"3.10\"",
-    "pydub-ng (>=0.2.0) ; python_version >= \"3.10\"",
+    "pydub-ng (>=0.2.0)",
     "SpeechRecognition (>=3.14.3)"
 ]
 
