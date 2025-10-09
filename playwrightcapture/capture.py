@@ -1336,12 +1336,19 @@ class Capture():
                         with open(self._temp_harfile.name, 'rb') as _har:
                             to_return['har'] = orjson.loads(_har.read())
                         self.logger.debug('Got HAR.')
+
                     if (to_return.get('har') and self.proxy and self.proxy.get('server')
                             and self.proxy['server'].startswith('socks5')):
                         # Only if the capture was not done via a socks5 proxy
                         if har := to_return['har']:  # Could be None
-                            async with timeout(30):
-                                await self.socks5_resolver(har)
+                            try:
+                                async with timeout(120):
+                                    await self.socks5_resolver(har)
+                            except (TimeoutError, asyncio.TimeoutError):
+                                self.logger.warning("Unable to resolve all the IPs via the socks5 proxy.")
+                                errors.append("Unable to resolve all the IPs via the socks5 proxy.")
+                                self.should_retry = True
+
                 except (TimeoutError, asyncio.TimeoutError):
                     self.logger.warning("Unable to close page and context at the end of the capture.")
                     errors.append("Unable to close page and context at the end of the capture.")
@@ -1878,7 +1885,7 @@ class Capture():
     # END FAVICON EXTRACTOR
 
     # ##### Run DNS resolution over socks5 proxy #####
-    # This is only use when the capture is done over a socks5 proxy, and not on a .onion
+    # This is only use when the capture is done over a socks5 proxy, and not on a .onion / .i2p
     # We get the HAR file, iterate over the entries an update the IPs
 
     async def socks5_resolver(self, harfile: dict[str, Any]) -> None:
@@ -1889,10 +1896,12 @@ class Capture():
         for entry in harfile['log']['entries']:
             if entry['request']['url']:
                 parsed = urlparse(entry['request']['url'])
-                if parsed.netloc and not parsed.netloc.endswith('onion'):
-                    hostnames.add(parsed.netloc)
+                if (parsed.hostname
+                        and not parsed.hostname.endswith('onion')
+                        and not parsed.hostname.endswith('i2p')):
+                    hostnames.add(parsed.hostname)
         # use the same technique as in lookyloo to resolve many domains in parallel
-        semaphore = asyncio.Semaphore(20)
+        semaphore = asyncio.Semaphore(30)
         all_requests = [resolver.resolve(hostname, semaphore) for hostname in hostnames]
         await asyncio.gather(*all_requests)
         self.logger.debug('Resolved all domains through the proxy.')

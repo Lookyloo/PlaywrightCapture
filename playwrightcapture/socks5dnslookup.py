@@ -71,7 +71,9 @@ class Socks5Resolver:
         self.logger = logger
         # configure set to false means we don't want to load resolv.conf
         self.resolver = Resolver(configure=False)
+        # Cache for 900 seconds
         self.resolver.cache = Cache(900)
+        # Aggressive timeout
         self.resolver.timeout = 2
         self.resolver.lifetime = 4
 
