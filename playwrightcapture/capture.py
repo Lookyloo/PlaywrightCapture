@@ -29,7 +29,7 @@ from aiohttp_socks import ProxyConnector
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from playwright._impl._errors import TargetClosedError
-from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request
+from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS  # type: ignore[attr-defined]
 from puremagic import PureError, from_string
@@ -49,10 +49,7 @@ else:
     from asyncio import timeout
 
 try:
-    if sys.version_info < (3, 10):
-        from pydub import AudioSegment  # type: ignore[attr-defined]
-    else:
-        from pydub import AudioSegment
+    from pydub import AudioSegment
     from speech_recognition import Recognizer, AudioFile
     CAN_SOLVE_CAPTCHA = True
 except ImportError:
@@ -153,6 +150,7 @@ class TrustedTimestampSettings(TypedDict, total=False):
 # https://www.browserscan.net/bot-detection
 # https://fingerprint.com/products/bot-detection/
 # https://fingerprintjs.github.io/BotD/main/
+
 
 class Capture():
 
@@ -1086,6 +1084,22 @@ class Capture():
             capturing_sub = False
             try:
                 page = await self.context.new_page()
+
+                if self.browser_name == 'chromium' and self.headless:
+                    async def _override_content_disposition_handler(route: Route, request: Request) -> None:
+                        """Special case to handle PDF rendered in the browser directly"""
+                        response = await route.fetch()  # performs the request
+                        overridden_headers = {
+                            **response.headers,
+                            "content-disposition": response.headers.get('content-disposition', 'attachment').replace('inline', 'attachment')
+                        }
+                        self.logger.info('Got a PDF in headless chromium, force download')
+                        await route.fulfill(response=response, headers=overridden_headers)
+
+                    # overwrite in chromium in headless mode, to trigger a download
+                    # otherwise it is rendered in the PDF viewer.
+                    await page.route("**/*.pdf", handler=_override_content_disposition_handler)
+
                 # client = await page.context.new_cdp_session(page)
                 # await client.detach()
             except Error as e:
