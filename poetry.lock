@@ -2714,4 +2714,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "5e8c80cf38047fdf2a4d12e1c0b4866963748f43855d05555bc0b2fad0495a46"
+content-hash = "95579e83e9d2df8396301dc11bf963e0c691481939f093d162de2a4219b3042c"
