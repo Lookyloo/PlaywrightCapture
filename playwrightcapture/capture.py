@@ -104,6 +104,14 @@ if TYPE_CHECKING:
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 
+class FramesResponse(TypedDict, total=False):
+
+    name: str
+    url: str
+    content: str | None
+    children: list[FramesResponse] | None
+
+
 class CaptureResponse(TypedDict, total=False):
 
     last_redirected_url: str
@@ -113,6 +121,7 @@ class CaptureResponse(TypedDict, total=False):
     error: str | None
     error_name: str | None
     html: str | None
+    frames: FramesResponse | None
     png: bytes | None
     downloaded_filename: str | None
     downloaded_file: bytes | None
@@ -835,21 +844,21 @@ class Capture():
 
             for label in labels_to_click:
                 try:
-                    async with timeout(3):
+                    async with timeout(2):
                         if await frame.get_by_label(label).is_visible():
                             got_button = True
                             self.logger.debug(f'Got button by label on frame: {label}')
-                            await frame.get_by_label(label).click(timeout=2000)
+                            await frame.get_by_label(label).click(timeout=1000)
                             break
                 except (TimeoutError, asyncio.TimeoutError) as e:
                     self.logger.warning(f'Consent timeout (label {label}) : {e}')
 
                 try:
-                    async with timeout(3):
+                    async with timeout(2):
                         if await frame.get_by_role("button", name=label).is_visible():
                             got_button = True
                             self.logger.debug(f'Got button by role on frame: {label}')
-                            await frame.get_by_role("button", name=label).click(timeout=2000)
+                            await frame.get_by_role("button", name=label).click(timeout=1000)
                             break
                 except (TimeoutError, asyncio.TimeoutError) as e:
                     self.logger.warning(f'Frame consent timeout (button {label}): {e}')
@@ -1000,6 +1009,7 @@ class Capture():
                 self.logger.debug('Using keyboard caused a timeout.')
             except Error as e:
                 self.logger.debug(f'Unable to use keyboard: {e}')
+
         if self.wait_for_download > 0:
             self.logger.info('Waiting for download to finish...')
             await self._safe_wait(page, 20)
@@ -1181,10 +1191,21 @@ class Capture():
                 except Exception as e:
                     self.logger.exception(f'Error during instrumentation: {e}')
 
-                if content := await self._failsafe_get_content(page):
-                    to_return['html'] = content
+                frames_semaphore = asyncio.Semaphore(50)
+                to_return['frames'] = await self.make_frame_tree(page.main_frame, frames_semaphore)
+                # The first content is what we call rendered HTML, keep it as-is
+                if frames := to_return.get('frames'):
+                    if content := frames.get('content'):
+                        to_return['html'] = content
+                    if u := frames.get('url'):
+                        if not u:
+                            self.logger.error('Unable to get the URL of the main frame.')
+                            u = '/!\\ Unknown /!\\'
+                        to_return['last_redirected_url'] = u
 
                 if 'html' in to_return and to_return['html'] is not None and with_favicon:
+                    # We're probably (?) safe only looking for favicons in the main frame.
+                    # TODO: check that?
                     try:
                         to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
                         got_favicons = True
@@ -1193,13 +1214,15 @@ class Capture():
                     except Exception as e:
                         self.logger.warning(f'Unable to get favicons: {e}')
 
-                to_return['last_redirected_url'] = page.url
-
                 if with_screenshot:
                     to_return['png'] = await self._failsafe_get_screenshot(page)
 
+                # Keep that all the way down there in case the capture failed.
                 self._already_captured.add(url)
                 if depth > 0 and to_return.get('html') and to_return['html']:
+                    # TODO with children frames:
+                    # 1. if the frame hasa URL, use that as base URL/referer for the subsequent captures
+                    # 2. if it doesn't, the base URL is the url of the parent (which may or may not be the main frame)
                     if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
                         to_return['children'] = []
                         depth -= 1
@@ -1339,7 +1362,6 @@ class Capture():
                     self.logger.warning(f"Unable to get the storage: {e}")
                     errors.append(f'Unable to get the storage: {e}')
                     self.should_retry = True
-                # frames_tree = self.make_frame_tree(page.main_frame)
                 try:
                     async with timeout(30):
                         page.remove_listener("requestfinished", store_request)
@@ -1457,7 +1479,7 @@ class Capture():
             self.logger.info(f"Unable to get any screenshot: {e}")
             raise e
 
-    async def _safe_wait(self, page: Page, force_max_wait_in_sec: int | None=None) -> None:
+    async def _safe_wait(self, page: Page | Frame, force_max_wait_in_sec: int | None=None) -> None:
         max_wait: float
         try:
             if force_max_wait_in_sec is not None:
@@ -1473,19 +1495,20 @@ class Capture():
             self.__network_not_idle += 1
             self.logger.debug(f'Timed out - Waiting for network idle, max wait: {max_wait}s')
 
-    async def _failsafe_get_content(self, page: Page) -> str | None:
+    async def _failsafe_get_content(self, page: Page | Frame) -> str | None:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
-        tries = 3
+        tries = 2
         while tries:
             try:
-                async with timeout(15):
+                async with timeout(3):
+                    await page.wait_for_load_state(state="domcontentloaded", timeout=2)
                     return await page.content()
             except (Error, TimeoutError, asyncio.TimeoutError):
                 self.logger.debug('Unable to get page content, trying again.')
                 tries -= 1
                 await self._wait_for_random_timeout(page, 1)
-                await self._safe_wait(page, 5)
+                await self._safe_wait(page, 2)
             except Exception as e:
                 self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
                 break
@@ -1743,7 +1766,7 @@ class Capture():
             return True
         return False
 
-    async def _wait_for_random_timeout(self, page: Page, timeout: int) -> None:
+    async def _wait_for_random_timeout(self, page: Page | Frame, timeout: int) -> None:
         '''Instead of waiting for the exact same time, we wait +-500ms around the given time. The time is fiven in seconds for simplicity's sake.'''
         if timeout > 1000:
             self.logger.warning(f'The waiting time is too long {timeout}, we expect seconds, not miliseconds.')
@@ -1751,11 +1774,14 @@ class Capture():
         _wait_time = random.randrange(max(timeout * 1000 - 500, 500), max(timeout * 1000 + 500, 1000))
         await page.wait_for_timeout(_wait_time)
 
-    def make_frame_tree(self, frame: Frame) -> dict[str, list[dict[str, Any]]]:
-        # TODO: not used at this time, need to figure out how do use that.
-        to_return: dict[str, list[dict[str, Any]]] = {frame._impl_obj._guid: []}
-        for child in frame.child_frames:
-            to_return[frame._impl_obj._guid].append(self.make_frame_tree(child))
+    async def make_frame_tree(self, frame: Frame, semaphore: asyncio.Semaphore) -> FramesResponse:
+        async with semaphore:
+            to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
+            self.logger.warning(f'Got no content for {frame.name}@{frame.url}.')
+            for child in frame.child_frames:
+                if not to_return.get('children'):
+                    to_return['children'] = []
+                to_return['children'].append(await self.make_frame_tree(child, semaphore))  # type: ignore[union-attr]
         return to_return
 
     # #### Manual favicon extractor, will be removed if/when Playwright supports getting the favicon.
