@@ -1777,7 +1777,8 @@ class Capture():
     async def make_frame_tree(self, frame: Frame, semaphore: asyncio.Semaphore) -> FramesResponse:
         async with semaphore:
             to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
-            self.logger.warning(f'Got no content for {frame.name}@{frame.url}.')
+            if not to_return.get('content'):
+                self.logger.warning(f'Got no content for {frame.name}@{frame.url}.')
             for child in frame.child_frames:
                 if not to_return.get('children'):
                     to_return['children'] = []
