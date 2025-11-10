@@ -1191,8 +1191,23 @@ class Capture():
                 except Exception as e:
                     self.logger.exception(f'Error during instrumentation: {e}')
 
-                frames_semaphore = asyncio.Semaphore(50)
+                # ### --------------------------------------
+                # Pass browser to offline mode to get content and make screenshot
+                await self.context.set_offline(True)
+                await self._safe_wait(page, 5)
+                self.logger.info('Browser offline.')
+                # Abort everything
+                await page.route("**/*", lambda route: route.abort())
+                await self._safe_wait(page, 5)
+
+                frames_semaphore = asyncio.Semaphore(200)
                 to_return['frames'] = await self.make_frame_tree(page.main_frame, frames_semaphore)
+
+                if with_screenshot:
+                    to_return['png'] = await self._failsafe_get_screenshot(page)
+
+                # ### --------------------------------------
+
                 # The first content is what we call rendered HTML, keep it as-is
                 if frames := to_return.get('frames'):
                     if content := frames.get('content'):
@@ -1214,11 +1229,9 @@ class Capture():
                     except Exception as e:
                         self.logger.warning(f'Unable to get favicons: {e}')
 
-                if with_screenshot:
-                    to_return['png'] = await self._failsafe_get_screenshot(page)
-
                 # Keep that all the way down there in case the capture failed.
                 self._already_captured.add(url)
+
                 if depth > 0 and to_return.get('html') and to_return['html']:
                     # TODO with children frames:
                     # 1. if the frame hasa URL, use that as base URL/referer for the subsequent captures
@@ -1240,6 +1253,10 @@ class Capture():
                         consecutive_errors = 0
                         for index, url in enumerate(child_urls):
                             self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
+                            # Make sure the context is online again before next capture.
+                            await self.context.set_offline(False)
+                            self.logger.info('Browser online.')
+
                             start_time = time.time()
                             if page.is_closed():
                                 self.logger.info('Page is closed, unable to capture children.')
@@ -1493,26 +1510,30 @@ class Capture():
         except PlaywrightTimeoutError:
             # Network never idle, keep going
             self.__network_not_idle += 1
-            self.logger.debug(f'Timed out - Waiting for network idle, max wait: {max_wait}s')
+            self.logger.debug(f'Timed out waiting for network idle, max wait: {max_wait}s')
 
     async def _failsafe_get_content(self, page: Page | Frame) -> str | None:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
-        tries = 2
+        tries = 3
         while tries:
             try:
-                async with timeout(3):
-                    await page.wait_for_load_state(state="domcontentloaded", timeout=2)
-                    return await page.content()
+                await page.wait_for_load_state(state="domcontentloaded", timeout=2)
             except (Error, TimeoutError, asyncio.TimeoutError):
-                self.logger.debug('Unable to get page content, trying again.')
-                tries -= 1
-                await self._wait_for_random_timeout(page, 1)
+                self.logger.info('Frame not loaded yet, cannot get content.')
+            else:
+                try:
+                    async with timeout(2):
+                        return await page.content()
+                except (Error, TimeoutError, asyncio.TimeoutError):
+                    self.logger.debug('Unable to get page content, trying again.')
+                except Exception as e:
+                    self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
+                    break
+            tries -= 1
+            if tries:
+                await self._wait_for_random_timeout(page, 2)
                 await self._safe_wait(page, 2)
-            except Exception as e:
-                self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
-                break
-        self.logger.warning('Unable to get page content.')
         return None
 
     def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> list[str]:
@@ -1776,9 +1797,12 @@ class Capture():
 
     async def make_frame_tree(self, frame: Frame, semaphore: asyncio.Semaphore) -> FramesResponse:
         async with semaphore:
+            frame_id = f'{frame.name}@{frame.url}'
+            if frame.is_detached():
+                self.logger.debug(f'{frame_id} is is detached.')
             to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
             if not to_return.get('content'):
-                self.logger.warning(f'Got no content for {frame.name}@{frame.url}.')
+                self.logger.warning(f'Got no content for {frame_id}.')
             for child in frame.child_frames:
                 if not to_return.get('children'):
                     to_return['children'] = []
