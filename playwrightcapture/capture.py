@@ -1192,13 +1192,17 @@ class Capture():
                     self.logger.exception(f'Error during instrumentation: {e}')
 
                 # ### --------------------------------------
+                # NOTE 2025-11-12: disabling the offline setting as it doesn't seem
+                # to solve the issue with the frames, but causes some failure
+                # while getting the stored state
+
                 # Pass browser to offline mode to get content and make screenshot
-                await self.context.set_offline(True)
-                await self._safe_wait(page, 5)
-                self.logger.info('Browser offline.')
+                # await self.context.set_offline(True)
+                # await self._safe_wait(page, 5)
+                # self.logger.info('Browser offline.')
                 # Abort everything
-                await page.route("**/*", lambda route: route.abort())
-                await self._safe_wait(page, 5)
+                # await page.route("**/*", lambda route: route.abort())
+                # await self._safe_wait(page, 5)
 
                 frames_semaphore = asyncio.Semaphore(200)
                 to_return['frames'] = await self.make_frame_tree(page.main_frame, frames_semaphore)
@@ -1802,7 +1806,11 @@ class Capture():
                 self.logger.debug(f'{frame_id} is is detached.')
             to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
             if not to_return.get('content'):
-                self.logger.warning(f'Got no content for {frame_id}.')
+                if frame.url in ['about:blank', '', None]:
+                    # too noisy in the warnings
+                    self.logger.info(f'Got no content for {frame_id}.')
+                else:
+                    self.logger.warning(f'Got no content for {frame_id}.')
             for child in frame.child_frames:
                 if not to_return.get('children'):
                     to_return['children'] = []
