@@ -1829,7 +1829,7 @@ class Capture():
             if not b64data or b64data[0] != ',':
                 self.logger.warning(f'Unable to decode {b64data}: empty or missing leading ",".')
                 return None
-            b64data = b64data[1:].strip()
+            b64data = b64data[1:].strip().replace('\n', '')
             if not re.fullmatch('[A-Za-z0-9+/]*={0,2}', b64data):
                 self.logger.warning(f'Unable to decode {b64data}: invalid characters.')
                 return None
