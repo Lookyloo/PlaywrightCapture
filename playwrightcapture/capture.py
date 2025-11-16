@@ -1204,8 +1204,7 @@ class Capture():
                 # await page.route("**/*", lambda route: route.abort())
                 # await self._safe_wait(page, 5)
 
-                frames_semaphore = asyncio.Semaphore(200)
-                to_return['frames'] = await self.make_frame_tree(page.main_frame, frames_semaphore)
+                to_return['frames'] = await self.make_frame_tree(page.main_frame)
 
                 if with_screenshot:
                     to_return['png'] = await self._failsafe_get_screenshot(page)
@@ -1520,7 +1519,7 @@ class Capture():
         ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
         tries = 3
-        while tries:
+        while tries > 0:
             try:
                 await page.wait_for_load_state(state="domcontentloaded", timeout=2)
             except (Error, TimeoutError, asyncio.TimeoutError):
@@ -1531,11 +1530,13 @@ class Capture():
                         return await page.content()
                 except (Error, TimeoutError, asyncio.TimeoutError):
                     self.logger.debug('Unable to get page content, trying again.')
+                    # The frame is loaded, if we get no content there, only retry one more time.
+                    tries -= 1
                 except Exception as e:
                     self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
                     break
             tries -= 1
-            if tries:
+            if tries > 0:
                 await self._wait_for_random_timeout(page, 2)
                 await self._safe_wait(page, 2)
         return None
@@ -1799,22 +1800,19 @@ class Capture():
         _wait_time = random.randrange(max(timeout * 1000 - 500, 500), max(timeout * 1000 + 500, 1000))
         await page.wait_for_timeout(_wait_time)
 
-    async def make_frame_tree(self, frame: Frame, semaphore: asyncio.Semaphore) -> FramesResponse:
-        async with semaphore:
-            frame_id = f'{frame.name}@{frame.url}'
-            if frame.is_detached():
-                self.logger.debug(f'{frame_id} is is detached.')
-            to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
-            if not to_return.get('content'):
-                if frame.url in ['about:blank', '', None]:
-                    # too noisy in the warnings
-                    self.logger.info(f'Got no content for {frame_id}.')
-                else:
-                    self.logger.warning(f'Got no content for {frame_id}.')
-            for child in frame.child_frames:
-                if not to_return.get('children'):
-                    to_return['children'] = []
-                to_return['children'].append(await self.make_frame_tree(child, semaphore))  # type: ignore[union-attr]
+    async def make_frame_tree(self, frame: Frame) -> FramesResponse:
+        frame_id = f'{frame.name}@{frame.url}'
+        if frame.is_detached():
+            self.logger.debug(f'{frame_id} is is detached.')
+        to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
+        if not to_return.get('content'):
+            if frame.url in ['about:blank', '', None]:
+                # too noisy in the warnings
+                self.logger.info(f'Got no content for {frame_id}.')
+            else:
+                self.logger.warning(f'Got no content for {frame_id}.')
+        if frame.child_frames:
+            to_return['children'] = await asyncio.gather(*[self.make_frame_tree(child) for child in frame.child_frames])
         return to_return
 
     # #### Manual favicon extractor, will be removed if/when Playwright supports getting the favicon.
