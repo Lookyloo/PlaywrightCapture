@@ -1704,6 +1704,7 @@ class Capture():
             'Peer sent fatal TLS alert: The server name sent was not recognized',
             'Load cannot follow more than 20 redirections',
             'Page crashed',
+            'Target crashed',
             'Error receiving data: Connection reset by peer',
             'Internal SOCKSv5 proxy server error.',
             'Host unreachable through SOCKSv5 server.',
@@ -1757,6 +1758,7 @@ class Capture():
                 'NS_ERROR_UNKNOWN_PROTOCOL',
                 'net::ERR_ABORTED',
                 'net::ERR_ADDRESS_UNREACHABLE',
+                'net::ERR_CERT_VERIFIER_CHANGED',
                 'net::ERR_CONNECTION_CLOSED',
                 'net::ERR_CONNECTION_REFUSED',
                 'net::ERR_CONNECTION_TIMED_OUT',
@@ -1806,7 +1808,7 @@ class Capture():
             self.logger.debug(f'{frame_id} is is detached.')
         to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
         if not to_return.get('content'):
-            if frame.url in ['about:blank', '', None]:
+            if frame.url in ['about:blank', 'about:srcdoc', '', None, 'chrome-error://chromewebdata/']:
                 # too noisy in the warnings
                 self.logger.info(f'Got no content for {frame_id}.')
             else:
