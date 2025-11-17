@@ -1434,6 +1434,8 @@ class Capture():
             to_timestamp['har'] = TimestampRequestBuilder().data(orjson.dumps(har))
         if storage := capture_response.get('storage'):
             to_timestamp['storage'] = TimestampRequestBuilder().data(orjson.dumps(storage))
+        if frames := capture_response.get('frames'):
+            to_timestamp['frames'] = TimestampRequestBuilder().data(orjson.dumps(frames))
         if html := capture_response.get('html'):
             to_timestamp['html'] = TimestampRequestBuilder().data(html.encode())
         if png := capture_response.get('png'):
