@@ -2428,15 +2428,15 @@ files = [
 
 [[package]]
 name = "speechrecognition"
-version = "3.14.4"
+version = "3.14.5"
 description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"recaptcha\""
 files = [
-    {file = "speechrecognition-3.14.4-py3-none-any.whl", hash = "sha256:8b09d99a6ed31f994ed6b1749d6f921717e41179aa6387a79e8d514d30d98577"},
-    {file = "speechrecognition-3.14.4.tar.gz", hash = "sha256:e698248b611589b5ba4f760fcf6ec9bc3a8a25a87a2e0e88ec926c63539b6a6f"},
+    {file = "speechrecognition-3.14.5-py3-none-any.whl", hash = "sha256:0c496d74e9f29b1daadb0d96f5660f47563e42bf09316dacdd57094c5095977e"},
+    {file = "speechrecognition-3.14.5.tar.gz", hash = "sha256:2d185192986b9b67a1502825a330e971f59a2cae0262f727a19ad1f6b586d00a"},
 ]
 
 [package.dependencies]
@@ -2447,7 +2447,7 @@ typing-extensions = "*"
 [package.extras]
 assemblyai = ["requests"]
 audio = ["PyAudio (>=0.2.11)"]
-dev = ["numpy", "pytest", "pytest-randomly", "respx"]
+dev = ["mypy", "numpy", "pytest", "pytest-randomly", "respx", "types-requests"]
 faster-whisper = ["faster-whisper", "soundfile"]
 google-cloud = ["google-cloud-speech"]
 groq = ["groq", "httpx (<0.28)"]
