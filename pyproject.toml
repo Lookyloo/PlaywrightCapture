@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.36.0"
+version = "1.36.1"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
@@ -21,7 +21,7 @@ dependencies = [
     "setuptools (>=80.9.0)",
     "puremagic (>=1.30)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
-    "aiohttp[speedups] (>=3.13.2)",
+    "aiohttp[speedups] (>=3.13.3)",
     "aiohttp-socks (>=0.11.0)",
     "typing-extensions (>=4.12.2,<5.0.0) ; python_version < \"3.12\"",
     "dnspython (>=2.7.0,<3.0.0)",
@@ -46,7 +46,7 @@ classifiers=[
 [project.optional-dependencies]
 recaptcha = [
     "pydub-ng (>=0.2.0)",
-    "SpeechRecognition (>=3.14.4)"
+    "SpeechRecognition (>=3.14.5)"
 ]
 
 [tool.poetry.group.dev.dependencies]

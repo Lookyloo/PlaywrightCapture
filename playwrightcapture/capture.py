@@ -1256,10 +1256,6 @@ class Capture():
                         consecutive_errors = 0
                         for index, url in enumerate(child_urls):
                             self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
-                            # Make sure the context is online again before next capture.
-                            await self.context.set_offline(False)
-                            self.logger.info('Browser online.')
-
                             start_time = time.time()
                             if page.is_closed():
                                 self.logger.info('Page is closed, unable to capture children.')
