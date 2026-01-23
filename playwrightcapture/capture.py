@@ -1710,6 +1710,8 @@ class Capture():
             'TurnstileError: [Cloudflare Turnstile] Error: 300030.',
             # The browser barfed
             'Target page, context or browser has been closed',
+            # Failed on the screenshot
+            'Protocol error (Page.captureScreenshot): Unable to capture screenshot',
         ]:
             # Other errors, let's give it another shot
             return True
@@ -1727,6 +1729,7 @@ class Capture():
                 'NS_BINDING_ABORTED',
                 'NS_BINDING_CANCELLED_OLD_LOAD',
                 'NS_ERROR_DOCUMENT_NOT_CACHED',
+                'NS_ERROR_NET_EMPTY_RESPONSE',
                 'NS_ERROR_NET_PARTIAL_TRANSFER',
                 'NS_ERROR_PARSED_DATA_CACHED',
                 'net::ERR_CONNECTION_RESET',
