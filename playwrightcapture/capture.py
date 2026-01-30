@@ -266,9 +266,14 @@ class Capture():
         elif self.browser_name not in self._browsers:
             raise UnknownPlaywrightBrowser(f'Incorrect browser name {self.browser_name}, must be in {", ".join(self._browsers)}')
 
+        args: list[str] = []
+        if self.browser_name == "chromium":
+            args = ['--disable-blink-features=AutomationControlled']
+
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
             channel="chromium" if self.browser_name == "chromium" else None,
+            args=args,
             headless=self.headless
         )
 
