@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.36.2"
+version = "1.36.3"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
@@ -15,10 +15,10 @@ dependencies = [
     "playwright (>=1.57.0)",
     "dateparser (>=1.2.2)",
     "beautifulsoup4[charset-normalizer,lxml] (>=4.14.3)",
-    "w3lib (>=2.3.1)",
+    "w3lib (>=2.4.0)",
     "tzdata (>=2025.3)",
     "playwright-stealth (>=2.0.1)",
-    "setuptools (>=80.10.1)",
+    "setuptools (>=80.10.2)",
     "puremagic (>=1.30)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
     "aiohttp[speedups] (>=3.13.3)",
