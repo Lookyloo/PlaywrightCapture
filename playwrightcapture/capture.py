@@ -1733,8 +1733,10 @@ class Capture():
                 'HTTP/2 Error: PROTOCOL_ERROR',
                 'NS_BINDING_ABORTED',
                 'NS_BINDING_CANCELLED_OLD_LOAD',
+                'NS_ERROR_CORRUPTED_CONTENT',
                 'NS_ERROR_DOCUMENT_NOT_CACHED',
                 'NS_ERROR_NET_EMPTY_RESPONSE',
+                'NS_ERROR_NET_ERROR_RESPONSE',
                 'NS_ERROR_NET_PARTIAL_TRANSFER',
                 'NS_ERROR_PARSED_DATA_CACHED',
                 'net::ERR_CONNECTION_RESET',
@@ -1785,6 +1787,8 @@ class Capture():
                 'net::ERR_TOO_MANY_REDIRECTS',
                 'net::ERR_UNSAFE_PORT',
                 'SSL_ERROR_UNKNOWN',
+                'SSL_ERROR_UNSUPPORTED_VERSION',
+                'SEC_ERROR_REVOKED_CERTIFICATE',
         ]:
             return True
         return False
