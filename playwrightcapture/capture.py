@@ -256,6 +256,10 @@ class Capture():
 
     async def __aenter__(self) -> Capture:
         '''Launch the browser'''
+        # Ignore the fonts by the time we take the screenshot
+        # 2026-02-02: the environment is copied into the process when initialized, so we need to set it globally here,
+        # and not in the method where we take the screenshot
+        os.environ['PW_TEST_SCREENSHOT_NO_FONTS_READY'] = '1'
         self.playwright = await async_playwright().start()
 
         if self.device_name:
@@ -1211,9 +1215,6 @@ class Capture():
 
                 to_return['frames'] = await self.make_frame_tree(page.main_frame)
 
-                if with_screenshot:
-                    to_return['png'] = await self._failsafe_get_screenshot(page)
-
                 # ### --------------------------------------
 
                 # The first content is what we call rendered HTML, keep it as-is
@@ -1236,6 +1237,9 @@ class Capture():
                         self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
                     except Exception as e:
                         self.logger.warning(f'Unable to get favicons: {e}')
+
+                if with_screenshot:
+                    to_return['png'] = await self._failsafe_get_screenshot(page)
 
                 # Keep that all the way down there in case the capture failed.
                 self._already_captured.add(url)
