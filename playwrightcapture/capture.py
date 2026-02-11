@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import binascii
 # import hashlib
+import codecs
 import logging
 import os
 import random
@@ -18,7 +19,7 @@ from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal, TYPE_CHECKING
 from collections.abc import MutableMapping
-from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit
+from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs
 from zipfile import ZipFile
 
 import aiohttp
@@ -1546,6 +1547,28 @@ class Capture():
             if tries > 0:
                 await self._wait_for_random_timeout(page, 2)
                 await self._safe_wait(page, 2)
+        else:
+            # got no content
+            if page.url and page.url.strip() and page.url.strip().startswith('data'):
+                self.logger.warning('Data URL in frame: {page.url}')
+                # 2026-02-10: if the URL starts with data, we have a data URI, and possibly some content
+                if parsed := self.__parse_data_uri(page.url):
+                    mime, mime_params, content = parsed
+                    charset = 'utf-8'
+                    if mime_params:
+                        # try to get charset
+                        if qs := parse_qs(mime_params):
+                            if charsets := qs.get('charset'):
+                                try:
+                                    charset = codecs.lookup(charsets[0]).name
+                                except LookupError:
+                                    charset = 'utf-8'
+                    if content:
+                        return unquote(content, encoding=charset)
+                    else:
+                        self.logger.warning('No content: {page.url}')
+                else:
+                    self.logger.warning('Attempted to get data URL content and failed: {page.url}')
         return None
 
     def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> list[str]:
