@@ -888,7 +888,7 @@ class Capture():
         except Exception as e:
             self.logger.info(f'Error while moving time forward: {e}')
 
-    async def __instrumentation(self, page: Page, url: str, allow_tracking: bool) -> None:
+    async def __instrumentation(self, page: Page, url: str, allow_tracking: bool, final_wait: int) -> None:
         try:
             # NOTE: the clock must be installed after the page is loaded, otherwise it sometimes cause the complete capture to hang.
             await page.clock.install()
@@ -1028,10 +1028,12 @@ class Capture():
             # fast forward ~30s
             await self._move_time_forward(page, 30)
 
-        self.logger.debug('Done with instrumentation, waiting for network idle.')
-        await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after instrumentation
+        self.logger.debug('Done with instrumentation.')
+        # Wait at least 5 sec after instrumentation
+        self.logger.debug(f'Waiting another {max(final_wait, 5)}s.')
+        await self._wait_for_random_timeout(page, max(final_wait, 5))
         await self._safe_wait(page)
-        self.logger.debug('Done with instrumentation, done with waiting.')
+        self.logger.debug('Done with waiting.')
 
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
@@ -1041,6 +1043,7 @@ class Capture():
                            with_favicon: bool=False,
                            allow_tracking: bool=False,
                            with_trusted_timestamps: bool=False,
+                           final_wait: int=5
                            ) -> CaptureResponse:
 
         to_return: CaptureResponse = {}
@@ -1194,7 +1197,7 @@ class Capture():
 
                 try:
                     if self.headless:
-                        await self.__instrumentation(page, url, allow_tracking)
+                        await self.__instrumentation(page, url, allow_tracking, final_wait)
                     else:
                         self.logger.debug('Headed mode, skipping instrumentation.')
                         await self._wait_for_random_timeout(page, self._capture_timeout - 5)
@@ -1277,7 +1280,8 @@ class Capture():
                                         page=page, depth=depth,
                                         rendered_hostname_only=rendered_hostname_only,
                                         max_depth_capture_time=max_capture_time,
-                                        with_screenshot=with_screenshot)
+                                        with_screenshot=with_screenshot,
+                                        final_wait=final_wait)
                                     if with_trusted_timestamps:
                                         try:
                                             await self._get_trusted_timestamps(child_capture)
