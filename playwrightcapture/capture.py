@@ -19,7 +19,7 @@ from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal, TYPE_CHECKING
 from collections.abc import MutableMapping
-from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs
+from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs, unquote_plus
 from zipfile import ZipFile
 
 import aiohttp
@@ -1896,6 +1896,7 @@ class Capture():
                 self.logger.warning(f'Unable to decode {uri}, missing ","')
                 return None
             mime, d = uri.split(',', 1)
+            d = unquote_plus(d)
             data = d.encode()
 
         if mime:
