@@ -902,7 +902,7 @@ class Capture():
         self.logger.debug('Start instrumentation.')
 
         # check if we have anything on the page. If we don't, the page is not working properly.
-        if await self._failsafe_get_content(page):
+        if await self._failsafe_get_content(page.main_frame):
             self.logger.debug('Got rendered content')
 
             # ==== recaptcha
@@ -1541,7 +1541,7 @@ class Capture():
             self.__network_not_idle += 1
             self.logger.debug(f'Timed out waiting for network idle, max wait: {max_wait}s')
 
-    async def _failsafe_get_content(self, page: Page | Frame) -> str | None:
+    async def _failsafe_get_content(self, page: Frame) -> str | None:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
         tries = 3
@@ -1549,7 +1549,7 @@ class Capture():
             try:
                 await page.wait_for_load_state(state="domcontentloaded", timeout=2)
             except (Error, TimeoutError, asyncio.TimeoutError):
-                self.logger.info('Frame not loaded yet, cannot get content.')
+                self.logger.debug('Frame not loaded yet, cannot get content.')
             else:
                 try:
                     async with timeout(2):
@@ -1568,7 +1568,7 @@ class Capture():
         else:
             # got no content
             if page.url and page.url.strip() and page.url.strip().startswith('data'):
-                self.logger.warning(f'Data URL in frame: {page.url}')
+                self.logger.debug(f'Data URL in frame: {page.url}')
                 # 2026-02-10: if the URL starts with data, we have a data URI, and possibly some content
                 if parsed := self.__parse_data_uri(page.url):
                     mime, mime_params, content = parsed
@@ -1587,6 +1587,9 @@ class Capture():
                         self.logger.warning('No content: {page.url}')
                 else:
                     self.logger.warning('Attempted to get data URL content and failed: {page.url}')
+            elif page.name and page.name.strip():
+                # 2026-02-16: some frame names are full HTML blobs, with extra things. Better than nothing.
+                return unquote(page.name)
         return None
 
     def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> list[str]:
@@ -1858,14 +1861,18 @@ class Capture():
         await page.wait_for_timeout(_wait_time)
 
     async def make_frame_tree(self, frame: Frame) -> FramesResponse:
-        frame_id = f'{frame.name}@{frame.url}'
+        if len(frame.name) > 70:
+            f_name = f'{frame.name[:30]} [...] {frame.name[-30:]}'
+        else:
+            f_name = frame.name
+        frame_id = f'{f_name}@{frame.url}'
         if frame.is_detached():
-            self.logger.debug(f'{frame_id} is is detached.')
+            self.logger.debug(f'{frame_id} is detached.')
         to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
         if not to_return.get('content'):
             if frame.url in ['about:blank', 'about:srcdoc', '', None, 'chrome-error://chromewebdata/']:
                 # too noisy in the warnings
-                self.logger.info(f'Got no content for {frame_id}.')
+                self.logger.debug(f'Got no content for {frame_id}.')
             else:
                 self.logger.warning(f'Got no content for {frame_id}.')
         if frame.child_frames:
