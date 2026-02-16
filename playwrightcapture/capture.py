@@ -976,10 +976,8 @@ class Capture():
                 fragment = unquote(parsed_url.fragment)
                 try:
                     await page.locator(f'id={fragment}').first.scroll_into_view_if_needed(timeout=3000)
-                    await self._wait_for_random_timeout(page, 2)
-                    async with timeout(5):
-                        await page.mouse.wheel(delta_y=random.uniform(150, 300), delta_x=0)
                     self.logger.debug('Jumped to fragment.')
+                    await self._wait_for_random_timeout(page, 2)
                 except PlaywrightTimeoutError as e:
                     self.logger.info(f'Unable to go to fragment "{fragment}" (timeout): {e}')
                 except TargetClosedError as e:
@@ -990,20 +988,10 @@ class Capture():
                     self.logger.debug('Unable to scroll due to timeout')
                 except (asyncio.CancelledError):
                     self.logger.debug('Unable to scroll due to timeout, call canceled')
+                await self._safe_mouse_wheel(page, delta_x_max=0, delta_y_max=200)
             else:
                 # scroll more
-                try:
-                    # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes.
-                    #   2024-07-08: Also, it sometimes get stuck.
-                    async with timeout(5):
-                        await page.mouse.wheel(delta_y=random.uniform(1500, 3000), delta_x=0)
-                    self.logger.debug('Scrolled down.')
-                except Error as e:
-                    self.logger.debug(f'Unable to scroll: {e}')
-                except (TimeoutError, asyncio.TimeoutError):
-                    self.logger.debug('Unable to scroll due to timeout')
-                except (asyncio.CancelledError):
-                    self.logger.debug('Unable to scroll due to timeout, call canceled')
+                await self._safe_mouse_wheel(page, delta_x_max=0, delta_y_max=1000)
 
             await self._wait_for_random_timeout(page, 3)
             self.logger.debug('Keep going after moving on page.')
@@ -1510,6 +1498,32 @@ class Capture():
         except Error as e:
             self.logger.info(f"Unable to get any screenshot: {e}")
             raise e
+
+    async def _safe_mouse_wheel(self, page: Page, delta_x_max: int, delta_y_max: int) -> None:
+        # scroll a few times
+        for _ in range(random.randint(2, 4)):
+            if delta_x_max == 0:
+                delta_x = 0
+            else:
+                delta_x = random.randint(int(delta_x_max / 2), delta_x_max)
+            if delta_y_max == 0:
+                delta_y = 0
+            else:
+                delta_y = random.randint(int(delta_y_max / 2), delta_y_max)
+            try:
+                # NOTE using page.mouse.wheel causes the instrumentation to fail, sometimes.
+                # 2024-07-08: Also, it sometimes get stuck.
+                async with timeout(5):
+                    await page.mouse.wheel(delta_y=delta_y, delta_x=delta_x)
+                self.logger.debug('Scrolled down.')
+            except Error as e:
+                self.logger.debug(f'Unable to scroll: {e}')
+            except (TimeoutError, asyncio.TimeoutError):
+                self.logger.debug('Unable to scroll due to timeout')
+            except (asyncio.CancelledError):
+                self.logger.debug('Unable to scroll due to timeout, call canceled')
+            await asyncio.sleep(random.uniform(0.5, 2.0))
+        self.logger.debug('Done scrolling down.')
 
     async def _safe_wait(self, page: Page | Frame, force_max_wait_in_sec: int | None=None) -> None:
         max_wait: float
