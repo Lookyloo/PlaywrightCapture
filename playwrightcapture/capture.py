@@ -33,7 +33,7 @@ from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS  # type: ignore[attr-defined]
-from puremagic import PureError, from_string
+from pure_magic_rs import MagicDb
 from rfc3161_client import TimestampRequestBuilder, TimeStampRequest, HashAlgorithm
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -241,6 +241,9 @@ class Capture():
         self._init_script = init_script
 
         self.tt_settings = tt_settings
+
+        # Initialize the magic DB
+        self.magicdb = MagicDb()
 
     def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
         splitted = urlsplit(proxy)
@@ -1077,13 +1080,9 @@ class Capture():
                     if request.resource_type == 'image' and response.ok:
                         try:
                             if body := await response.body():
-                                try:
-                                    mimetype = from_string(body, mime=True)
-                                    if mimetype.startswith('image'):
-                                        self._requests[request.url] = body
-                                except PureError:
-                                    # unable to identify the mimetype
-                                    pass
+                                m = self.magicdb.best_magic_buffer(body)
+                                if m.mime_type.startswith('image'):
+                                    self._requests[request.url] = body
                         except Exception:
                             pass
             except Exception as e:
@@ -2012,22 +2011,17 @@ class Capture():
                             favicon_response.raise_for_status()
                             favicon = await favicon_response.read()
                     if favicon:
-                        try:
-                            mimetype = from_string(favicon, mime=True)
-                        except PureError:
-                            # unable to identify the mimetype
-                            self.logger.debug(f'Unable to identify the mimetype for favicon from {u}')
+                        m = self.magicdb.best_magic_buffer(favicon)
+                        if not m.mime_type:
+                            # empty, ignore
+                            pass
+                        elif m.mime_type.startswith('image'):
+                            to_return.add(favicon)
+                        elif m.mime_type.startswith('text'):
+                            # Just ignore, it's probably a 404 page
+                            pass
                         else:
-                            if not mimetype:
-                                # empty, ignore
-                                pass
-                            elif mimetype.startswith('image'):
-                                to_return.add(favicon)
-                            elif mimetype.startswith('text'):
-                                # Just ignore, it's probably a 404 page
-                                pass
-                            else:
-                                self.logger.warning(f'Unexpected mimetype for favicon from {u}: {mimetype}')
+                            self.logger.warning(f'Unexpected mimetype for favicon from {u}: {m.mime_type}')
                     self.logger.debug(f'Done with favicon from {u}.')
                 except aiohttp.ClientError as e:
                     self.logger.debug(f'Unable to fetch favicon from {u}: {e}')
