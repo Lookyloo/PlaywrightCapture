@@ -1099,17 +1099,24 @@ class Capture():
                 if self.browser_name == 'chromium' and self.headless:
                     async def _override_content_disposition_handler(route: Route, request: Request) -> None:
                         """Special case to handle PDF rendered in the browser directly"""
-                        response = await route.fetch()  # performs the request
-                        overridden_headers = {
-                            **response.headers,
-                            "content-disposition": response.headers.get('content-disposition', 'attachment').replace('inline', 'attachment')
-                        }
-                        self.logger.info('Got a PDF in headless chromium, force download')
-                        await route.fulfill(response=response, headers=overridden_headers)
+                        try:
+                            response = await route.fetch()  # performs the request
+                            overridden_headers = {
+                                **response.headers,
+                                "content-disposition": 'attachment'
+                            }
+                            self.logger.info('Got a PDF in headless chromium, force download')
+                            await route.fulfill(response=response, headers=overridden_headers)
+                        except Error as e:
+                            self.logger.info(f'Unable to force download: {e}')
+                            await route.continue_()
 
                     # overwrite in chromium in headless mode, to trigger a download
                     # otherwise it is rendered in the PDF viewer.
-                    await page.route("**/*.pdf", handler=_override_content_disposition_handler)
+                    try:
+                        await page.route("**/*.pdf", handler=_override_content_disposition_handler)
+                    except Error as e:
+                        self.logger.warning(f'Failed at fetching PDF in headless chromium: {e}')
 
                 # client = await page.context.new_cdp_session(page)
                 # await client.detach()
@@ -1341,16 +1348,18 @@ class Capture():
         finally:
             self.logger.debug('Finishing up capture.')
             if not capturing_sub:
-                if multiple_downloads:
-                    if len(multiple_downloads) == 1:
-                        to_return["downloaded_filename"] = multiple_downloads[0][0]
-                        to_return["downloaded_file"] = multiple_downloads[0][1]
+                # Deduplicate list
+                if multiple_dls := set(multiple_downloads):
+                    if len(multiple_dls) == 1:
+                        dl = multiple_dls.pop()
+                        to_return["downloaded_filename"] = dl[0]
+                        to_return["downloaded_file"] = dl[1]
                     else:
                         # we have multiple downloads, making it a zip, make sure the filename is unique
                         mem_zip = BytesIO()
                         to_return["downloaded_filename"] = f'{self.uuid}_multiple_downloads.zip'
                         with ZipFile(mem_zip, 'w') as z:
-                            for i, f_details in enumerate(multiple_downloads):
+                            for i, f_details in enumerate(multiple_dls):
                                 filename, file_content = f_details
                                 z.writestr(f'{i}_{filename}', file_content)
                         to_return["downloaded_file"] = mem_zip.getvalue()
