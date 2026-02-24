@@ -276,7 +276,9 @@ class Capture():
 
         args: list[str] = []
         if self.browser_name == "chromium":
-            args = ['--disable-blink-features=AutomationControlled']
+            args = ['--disable-blink-features=AutomationControlled',  # Avoids setting navigator.webdriver to True
+                    '--unsafely-treat-insecure-origin-as-secure',  # Allows to run crypto API on .onion URLs (See https://github.com/Lookyloo/PlaywrightCapture/issues/65)
+                    ]
 
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
