@@ -1391,21 +1391,22 @@ class Capture():
                     errors.append(f'Unable to get the storage: {e}')
                     self.should_retry = True
                 try:
-                    try:
-                        page.remove_listener("requestfinished", store_request)
-                        await asyncio.sleep(1)
-                        async with timeout(3):
-                            await self.context.set_offline(True)
-                            self.logger.debug('Page offline.')
-                    except (TimeoutError, asyncio.TimeoutError):
-                        self.logger.warning("Unable switch offline.")
+                    if not page.is_closed():
+                        try:
+                            page.remove_listener("requestfinished", store_request)
+                            await asyncio.sleep(1)
+                            async with timeout(3):
+                                await self.context.set_offline(True)
+                                self.logger.debug('Page offline.')
+                        except (TimeoutError, asyncio.TimeoutError):
+                            self.logger.debug("Unable switch offline.")
 
-                    try:
-                        async with timeout(5):
-                            await page.close(reason="Closing the page because the capture finished.")
-                            self.logger.debug('Page closed.')
-                    except (TimeoutError, asyncio.TimeoutError):
-                        self.logger.warning("Unable close page.")
+                        try:
+                            async with timeout(5):
+                                await page.close(reason="Closing the page because the capture finished.")
+                                self.logger.debug('Page closed.')
+                        except (TimeoutError, asyncio.TimeoutError):
+                            self.logger.warning("Unable close page.")
 
                     async with timeout(30):
                         await self.context.close(reason="Closing the context because the capture finished.")  # context needs to be closed to generate the HAR
