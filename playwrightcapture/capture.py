@@ -899,7 +899,7 @@ class Capture():
             await page.clock.install()
             clock_set = True
         except Error as e:
-            self.logger.warning(f'Unable to install the clock: {e}')
+            self.logger.info(f'Unable to install the clock: {e}')
             clock_set = False
 
         # page instrumentation
