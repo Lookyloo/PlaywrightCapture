@@ -29,6 +29,7 @@ import orjson
 from aiohttp_socks import ProxyConnector
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
+from lookyloo_models import Cookie
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -56,43 +57,10 @@ try:
 except ImportError:
     CAN_SOLVE_CAPTCHA = False
 
-# ####
-# This bit is required as long as we need to support python < 3.12, stop removing it, you idiot
-# That's the runtime failure: https://github.com/ail-project/lacus/actions/runs/16447900822/job/46484807036
-# And the MyPy failure: https://github.com/ail-project/LacusCore/actions/runs/16447753492/job/46484287947
 if sys.version_info < (3, 12):
     from typing_extensions import TypedDict
 else:
     from typing import TypedDict
-
-# These two classes are copies of te ones in Playwright, we need them until we can discard python 3.11
-# They come from this file:
-#   https://github.com/microsoft/playwright-python/blob/main/playwright/_impl/_api_structures.py
-
-
-class SetCookieParam(TypedDict, total=False):
-    name: str
-    value: str
-    url: str
-    domain: str
-    path: str
-    expires: float
-    httpOnly: bool
-    secure: bool
-    sameSite: Literal["Lax", "None", "Strict"]
-    partitionKey: str
-
-
-class Cookie(TypedDict, total=False):
-    name: str
-    value: str
-    domain: str
-    path: str
-    expires: float
-    httpOnly: bool
-    secure: bool
-    sameSite: Literal["Lax", "None", "Strict"]
-    partitionKey: str
 
 # ####################################
 
@@ -226,7 +194,7 @@ class Capture():
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
-        self._cookies: list[SetCookieParam] = []
+        self._cookies: list[Cookie] = []
         self._storage: StorageState = {}
         self._http_credentials: HttpCredentials = {}
         self._geolocation: Geolocation = {}
@@ -374,49 +342,50 @@ class Capture():
             raise InvalidPlaywrightParameter(f'At least a latitude and a longitude are required in the geolocation: {geolocation}')
 
     @property
-    def cookies(self) -> list[SetCookieParam]:
+    def cookies(self) -> list[Cookie]:
         return self._cookies
 
     @cookies.setter
-    def cookies(self, cookies: list[SetCookieParam | dict[str, Any]] | None) -> None:
+    def cookies(self, cookies: list[Cookie | dict[str, Any]] | None) -> None:
         '''Cookies to send along to the initial request.
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
         if not cookies:
             return
         for cookie in cookies:
-            c: SetCookieParam = {
-                'name': cookie['name'],
-                'value': cookie['value'],
-            }
+            if isinstance(cookie, Cookie):
+                self._cookies.append(cookie)
+                continue
+
+            c: Cookie = Cookie(name=cookie['name'], value=cookie['value'])
             # self.context.add_cookies doesn't accept None, we cannot just use get
             if 'url' in cookie:
-                c['url'] = cookie['url']
+                c.url = cookie['url']
             if 'domain' in cookie:
-                c['domain'] = cookie['domain']
+                c.domain = cookie['domain']
             if 'path' in cookie:
-                c['path'] = cookie['path']
+                c.path = cookie['path']
             if 'expires' in cookie:
                 if isinstance(cookie['expires'], str):
                     try:
                         _expire = dateparser.parse(cookie['expires'])
                         if _expire:
-                            c['expires'] = _expire.timestamp()
+                            c.expires = _expire.timestamp()
                     except Exception as e:
                         self.logger.warning(f'Invalid expiring value: {cookie["expires"]} - {e}')
                         pass
                 elif isinstance(cookie['expires'], (float, int)):
-                    c['expires'] = cookie['expires']
+                    c.expires = cookie['expires']
                 else:
                     self.logger.warning(f'Invalid type for the expiring value: {cookie["expires"]} - {type(cookie["expires"])}')
             if 'httpOnly' in cookie:
-                c['httpOnly'] = bool(cookie['httpOnly'])
+                c.httpOnly = bool(cookie['httpOnly'])
             if 'secure' in cookie:
-                c['secure'] = bool(cookie['secure'])
+                c.secure = bool(cookie['secure'])
             if 'sameSite' in cookie and cookie['sameSite'] in ["Lax", "None", "Strict"]:
-                c['sameSite'] = cookie['sameSite']
+                c.sameSite = cookie['sameSite']
 
-            if 'url' in c or ('domain' in c and 'path' in c):
+            if c.url or (c.domain and c.path):
                 self._cookies.append(c)
             else:
                 url = cookie.get("url")
