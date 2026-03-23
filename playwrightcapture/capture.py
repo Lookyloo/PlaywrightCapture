@@ -23,7 +23,6 @@ from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse
 from zipfile import ZipFile
 
 import aiohttp
-import dateparser
 import orjson
 
 from aiohttp_socks import ProxyConnector
@@ -353,45 +352,18 @@ class Capture():
         if not cookies:
             return
         for cookie in cookies:
+            if not cookie:
+                continue
             if isinstance(cookie, Cookie):
                 self._cookies.append(cookie)
-                continue
-
-            c: Cookie = Cookie(name=cookie['name'], value=cookie['value'])
-            # self.context.add_cookies doesn't accept None, we cannot just use get
-            if 'url' in cookie:
-                c.url = cookie['url']
-            if 'domain' in cookie:
-                c.domain = cookie['domain']
-            if 'path' in cookie:
-                c.path = cookie['path']
-            if 'expires' in cookie:
-                if isinstance(cookie['expires'], str):
-                    try:
-                        _expire = dateparser.parse(cookie['expires'])
-                        if _expire:
-                            c.expires = _expire.timestamp()
-                    except Exception as e:
-                        self.logger.warning(f'Invalid expiring value: {cookie["expires"]} - {e}')
-                        pass
-                elif isinstance(cookie['expires'], (float, int)):
-                    c.expires = cookie['expires']
-                else:
-                    self.logger.warning(f'Invalid type for the expiring value: {cookie["expires"]} - {type(cookie["expires"])}')
-            if 'httpOnly' in cookie:
-                c.httpOnly = bool(cookie['httpOnly'])
-            if 'secure' in cookie:
-                c.secure = bool(cookie['secure'])
-            if 'sameSite' in cookie and cookie['sameSite'] in ["Lax", "None", "Strict"]:
-                c.sameSite = cookie['sameSite']
-
-            if c.url or (c.domain and c.path):
-                self._cookies.append(c)
+            elif isinstance(cookie, dict):
+                try:
+                    self._cookies.append(Cookie.model_validate(cookie))
+                except Exception as e:
+                    self.logger.warning(f'Invalid cookie: {e}')
             else:
-                url = cookie.get("url")
-                domain = cookie.get("domain")
-                path = cookie.get("path")
-                self.logger.warning(f'The cookie must have a URL ({url}) or a domain ({domain}) and a path ({path})')
+                # None, ignore
+                pass
 
     @property
     def storage(self) -> StorageState:
@@ -563,9 +535,7 @@ class Capture():
 
         if self.cookies:
             try:
-                # NOTE: Ignore type until we can use python 3.12 + only
-                # playwrightcapture.capture.SetCookieParam == playwright._impl._api_structures.SetCookieParam
-                await self.context.add_cookies(self.cookies)  # type: ignore[arg-type]
+                await self.context.add_cookies([c.model_dump(exclude_none=True) for c in self.cookies])  # type: ignore[misc]
             except Exception:
                 self.logger.exception(f'Unable to set cookies: {self.cookies}')
 
