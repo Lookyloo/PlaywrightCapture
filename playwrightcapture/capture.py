@@ -1544,11 +1544,11 @@ class Capture():
         self,
         page: Page,
         *,
-        rendered_hostname_only: bool = True,
-        with_screenshot: bool = True,
-        with_favicon: bool = False,
-        with_trusted_timestamps: bool = False,
-        page_capture_state: PageCaptureState | None = None,
+        rendered_hostname_only: bool=True,
+        with_screenshot: bool=True,
+        with_favicon: bool=False,
+        with_trusted_timestamps: bool=False,
+        page_capture_state: PageCaptureState | None=None,
     ) -> CaptureResponse:
         """Capture the state of the current page only.
 
