@@ -1564,86 +1564,87 @@ class Capture():
         errors: list[str] = []
 
         try:
-            # Build frame tree and extract main HTML / URL, similar to capture_page
-            to_return['frames'] = await self.make_frame_tree(page.main_frame)
+            try:
+                # Build frame tree and extract main HTML / URL, similar to capture_page
+                to_return['frames'] = await self.make_frame_tree(page.main_frame)
 
-            if frames := to_return.get('frames'):
-                # The first content is what we call rendered HTML, keep it as-is
-                if content := frames.get('content'):
-                    to_return['html'] = content
-                if u := frames.get('url'):
-                    if not u:
-                        self.logger.error('Unable to get the URL of the main frame.')
-                        u = '/!\\ Unknown /!\\'
-                    to_return['last_redirected_url'] = u
+                if frames := to_return.get('frames'):
+                    # The first content is what we call rendered HTML, keep it as-is
+                    if content := frames.get('content'):
+                        to_return['html'] = content
+                    if u := frames.get('url'):
+                        if not u:
+                            self.logger.error('Unable to get the URL of the main frame.')
+                            u = '/!\\ Unknown /!\\'
+                        to_return['last_redirected_url'] = u
 
-            if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                # We're probably (?) safe only looking for favicons in the main frame.
-                # TODO: check that?
-                try:
-                    to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
-                    if page_capture_state is not None:
-                        page_capture_state['mark_favicons_done']()
-                except (TimeoutError, asyncio.TimeoutError) as e:
-                    self.logger.warning(f'[Timeout] Unable to get favicons on current page: {e}')
-                except Exception as e:
-                    self.logger.warning(f'Unable to get favicons on current page: {e}')
+                if 'html' in to_return and to_return['html'] is not None and with_favicon:
+                    # We're probably (?) safe only looking for favicons in the main frame.
+                    # TODO: check that?
+                    try:
+                        to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
+                        if page_capture_state is not None:
+                            page_capture_state['mark_favicons_done']()
+                    except (TimeoutError, asyncio.TimeoutError) as e:
+                        self.logger.warning(f'[Timeout] Unable to get favicons on current page: {e}')
+                    except Exception as e:
+                        self.logger.warning(f'Unable to get favicons on current page: {e}')
 
-            if with_screenshot:
-                to_return['png'] = await self._failsafe_get_screenshot(page)
+                if with_screenshot:
+                    to_return['png'] = await self._failsafe_get_screenshot(page)
 
-            # Keep that all the way down there in case the capture failed.
-            if url := to_return.get('last_redirected_url'):
-                self._already_captured.add(url)
-            else:
-                self._already_captured.add(page.url)
+                # Keep that all the way down there in case the capture failed.
+                if url := to_return.get('last_redirected_url'):
+                    self._already_captured.add(url)
+                else:
+                    self._already_captured.add(page.url)
 
-        except PlaywrightTimeoutError as e:
-            errors.append(f"The capture took too long while capturing current page - {e.message}")
-            self.should_retry = True
-        except (asyncio.TimeoutError, TimeoutError):
-            errors.append("Something in the capture of the current page took too long")
-            self.should_retry = True
-        except TargetClosedError as e:
-            errors.append(f"The target was closed while capturing current page - {e}")
-            self.should_retry = True
-        except Error as e:
-            # NOTE: there are a lot of errors that look like duplicates and they are triggered at different times in the process.
-            # it is tricky to figure our which one should (and should not) trigger a retry. Below is our best guess and it will change over time.
-            self._update_exceptions(e)
-            errors.append(e.message)
-            to_return['error_name'] = e.name
-            # TODO: check e.message and figure out if it is worth retrying or not.
-            # NOTE: e.name is generally (always?) "Error"
-            if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
-                self.logger.info(f'Unable to process current page: {e.name}')
-            elif self._retry_network_error(e) or self._retry_browser_error(e):
-                # this one sounds like something we can retry...
-                self.logger.info(f'Issue while capturing current page (retrying): {e.message}')
-                errors.append(f'Issue while capturing current page: {e.message}')
+            except PlaywrightTimeoutError as e:
+                errors.append(f"The capture took too long while capturing current page - {e.message}")
                 self.should_retry = True
-            else:
-                # Unexpected ones
-                self.logger.exception(f'Something went poorly while capturing current page: "{e.name}" - {e.message}')
-        except Exception as e:
-            # we may get a non-playwright exception to.
-            # The ones we try to handle here should be treated as if they were.
-            errors.append(str(e))
-            if str(e) in ['Connection closed while reading from the driver']:
-                self.logger.info(f'Issue while capturing current page (retrying): {e}')
-                errors.append(f'Issue while capturing current page: {e}')
+            except (asyncio.TimeoutError, TimeoutError):
+                errors.append("Something in the capture of the current page took too long")
                 self.should_retry = True
-            else:
-                raise e
-
-        await self._finalize_capture(
-            page=page,
-            store_request=page_capture_state['store_request'] if page_capture_state is not None else None,
-            multiple_downloads=page_capture_state['multiple_downloads'] if page_capture_state is not None else None,
-            to_return=to_return,
-            errors=errors,
-            with_trusted_timestamps=with_trusted_timestamps,
-        )
+            except TargetClosedError as e:
+                errors.append(f"The target was closed while capturing current page - {e}")
+                self.should_retry = True
+            except Error as e:
+                # NOTE: there are a lot of errors that look like duplicates and they are triggered at different times in the process.
+                # it is tricky to figure our which one should (and should not) trigger a retry. Below is our best guess and it will change over time.
+                self._update_exceptions(e)
+                errors.append(e.message)
+                to_return['error_name'] = e.name
+                # TODO: check e.message and figure out if it is worth retrying or not.
+                # NOTE: e.name is generally (always?) "Error"
+                if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
+                    self.logger.info(f'Unable to process current page: {e.name}')
+                elif self._retry_network_error(e) or self._retry_browser_error(e):
+                    # this one sounds like something we can retry...
+                    self.logger.info(f'Issue while capturing current page (retrying): {e.message}')
+                    errors.append(f'Issue while capturing current page: {e.message}')
+                    self.should_retry = True
+                else:
+                    # Unexpected ones
+                    self.logger.exception(f'Something went poorly while capturing current page: "{e.name}" - {e.message}')
+            except Exception as e:
+                # we may get a non-playwright exception to.
+                # The ones we try to handle here should be treated as if they were.
+                errors.append(str(e))
+                if str(e) in ['Connection closed while reading from the driver']:
+                    self.logger.info(f'Issue while capturing current page (retrying): {e}')
+                    errors.append(f'Issue while capturing current page: {e}')
+                    self.should_retry = True
+                else:
+                    raise e
+        finally:
+            await self._finalize_capture(
+                page=page,
+                store_request=page_capture_state['store_request'] if page_capture_state is not None else None,
+                multiple_downloads=page_capture_state['multiple_downloads'] if page_capture_state is not None else None,
+                to_return=to_return,
+                errors=errors,
+                with_trusted_timestamps=with_trusted_timestamps,
+            )
 
         self.logger.debug('Current-page capture done')
         return to_return
