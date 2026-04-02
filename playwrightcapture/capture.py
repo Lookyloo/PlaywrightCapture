@@ -266,7 +266,7 @@ class Capture():
 
         # Build a per-launch environment so concurrent captures each target
         # their own X11 display without mutating the process-global DISPLAY.
-        launch_env: dict[str, str] | None = None
+        launch_env: dict[str, str | float | bool] | None = None
         if self._display:
             launch_env = {**os.environ, 'DISPLAY': self._display}
             self.logger.info(f'Launching browser on DISPLAY {self._display}')
