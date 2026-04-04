@@ -106,14 +106,6 @@ class CaptureResponse(TypedDict, total=False):
     potential_favicons: set[bytes] | None
 
 
-class PageCaptureState(TypedDict):
-    """Per-page runtime state shared between setup and finalization."""
-
-    multiple_downloads: list[tuple[str, bytes]]
-    store_request: Callable[[Request], Awaitable[None]]
-    mark_favicons_done: Callable[[], None]
-
-
 class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
     """
     Prepend log entry with the UUID of the capture
@@ -224,6 +216,11 @@ class Capture():
         # concurrent capture gets its own display without mutating os.environ.
         self._display = display
 
+        # Per-page capture state populated by setup_page_capture().
+        self._multiple_downloads: list[tuple[str, bytes]] = []
+        self._store_request: Callable[[Request], Awaitable[None]] | None = None
+        self._mark_favicons_done: Callable[[], None] | None = None
+
         # Initialize the magic DB
         self.magicdb = MagicDb()
 
@@ -310,7 +307,7 @@ class Capture():
 
         return True
 
-    async def setup_page_capture(self, page: Page, *, allow_tracking: bool=False) -> PageCaptureState:
+    async def setup_page_capture(self, page: Page, *, allow_tracking: bool=False) -> None:
         """Prepare a page for a single-page capture without changing capture semantics.
 
         This method preserves the existing per-page setup used by capture_page:
@@ -326,7 +323,7 @@ class Capture():
         self.wait_for_download = 0
 
         # We may have multiple download triggered via JS
-        multiple_downloads: list[tuple[str, bytes]] = []
+        self._multiple_downloads = []
 
         async def handle_download(download: Download) -> None:
             # This method is called when a download event is triggered from JS in a page that also renders
@@ -338,7 +335,7 @@ class Capture():
                     filename = download.suggested_filename
                     with open(tmp_f.name, "rb") as f:
                         file_content = f.read()
-                    multiple_downloads.append((filename, file_content))
+                    self._multiple_downloads.append((filename, file_content))
                     self.logger.info('Done with download.')
             except Exception as e:
                 if download.page.is_closed():
@@ -409,15 +406,12 @@ class Capture():
 
         page.set_default_timeout((self._capture_timeout - 2) * 1000)
         # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
+        self._store_request = store_request
+        self._mark_favicons_done = mark_favicons_done
+
         page.on("requestfinished", store_request)
         page.on("dialog", lambda dialog: dialog.accept())
         page.on("download", handle_download)
-
-        return {
-            'multiple_downloads': multiple_downloads,
-            'store_request': store_request,
-            'mark_favicons_done': mark_favicons_done,
-        }
 
     @property
     def locale(self) -> str:
@@ -483,8 +477,6 @@ class Capture():
     @cookies.setter
     def cookies(self, cookies: list[Cookie | dict[str, Any] | object] | None) -> None:
         '''Cookies to send along to the initial request.
-        Accepts Playwright cookie dictionaries as well as model/object wrappers
-        exposing equivalent fields.
 
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
@@ -1107,27 +1099,19 @@ class Capture():
         self,
         *,
         page: Page,
-        store_request: Callable[[Request], Awaitable[None]] | None,
-        multiple_downloads: list[tuple[str, bytes]] | None,
         to_return: CaptureResponse,
         errors: list[str],
         with_trusted_timestamps: bool,
     ) -> None:
-        """Common finalization logic for captures (downloads, cookies, storage, HAR, socks5, timestamps).
-
-        This helper centralizes the tail of a capture, which previously lived at the end
-        of capture_page. It is now also used by capture_current_page, consuming the
-        state returned by setup_page_capture when available, to avoid code duplication
-        while keeping single-page finalization behavior aligned.
-        """
+        """Common finalization logic for captures (downloads, cookies, storage, HAR, socks5, timestamps)."""
 
         self.logger.debug('Finishing up capture (helper).')
 
         # We may have multiple downloads triggered via JS; if so, deduplicate them and,
         # when there is more than one, bundle them into a zip stored in-memory.
         # This mirrors the behavior previously implemented at the end of capture_page.
-        if multiple_downloads is not None:
-            if multiple_dls := set(multiple_downloads):
+        if self._multiple_downloads:
+            if multiple_dls := set(self._multiple_downloads):
                 if len(multiple_dls) == 1:
                     dl = multiple_dls.pop()
                     to_return["downloaded_filename"] = dl[0]
@@ -1173,9 +1157,9 @@ class Capture():
             if not page.is_closed():
                 # Remove request listener if we set one; best-effort only as it is
                 # primarily used for favicon extraction and should not break captures.
-                if store_request is not None:
+                if self._store_request is not None:
                     try:
-                        page.remove_listener("requestfinished", store_request)
+                        page.remove_listener("requestfinished", self._store_request)
                     except Exception:
                         # Best-effort only
                         pass
@@ -1241,7 +1225,7 @@ class Capture():
             except Exception as e:
                 self.logger.warning(f'Unable to get trusted timestamps: {e}')
 
-    async def capture_page(self, url: str, *, max_depth_capture_time: int,
+    async def capture_page(self, url: str | None=None, *, max_depth_capture_time: int,
                            referer: str | None=None,
                            page: Page | None=None, depth: int=0,
                            rendered_hostname_only: bool=True,
@@ -1249,6 +1233,7 @@ class Capture():
                            with_favicon: bool=False,
                            allow_tracking: bool=False,
                            with_trusted_timestamps: bool=False,
+                           current_page_only: bool=False,
                            final_wait: int=5
                            ) -> CaptureResponse:
         """Capture a URL and optionally recurse into child links.
@@ -1257,13 +1242,21 @@ class Capture():
         performs the navigation, and finalizes the capture before returning.
         Recursive child captures reuse the existing page and therefore skip the
         outer setup/finalization path.
+
+        When `current_page_only` is True the method snapshots the page as-is
+        (no navigation, no recursion) and then finalizes.  This is the path
+        used by interactive captures after setup_page_capture has already been
+        called by the caller.
         """
 
         to_return: CaptureResponse = {}
         errors: list[str] = []
-        page_capture_state: PageCaptureState | None = None
 
-        if page is not None:
+        if current_page_only:
+            if page is None:
+                raise InvalidPlaywrightParameter('current_page_only requires a page argument')
+            capturing_sub = False
+        elif page is not None:
             capturing_sub = True
         else:
             capturing_sub = False
@@ -1275,172 +1268,234 @@ class Capture():
                 to_return['error'] = f'Unable to create new page: {e}'
                 return to_return
 
-            page_capture_state = await self.setup_page_capture(page, allow_tracking=allow_tracking)
+            await self.setup_page_capture(page, allow_tracking=allow_tracking)
 
         try:
-            try:
-                await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
-            except Error as initial_error:
-                self._update_exceptions(initial_error)
-                # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
-                if initial_error.name in ['Download is starting', 'net::ERR_ABORTED']:
-                    # page.goto failed, but it triggered a download event.
-                    # Let's re-trigger it.
-                    try:
-                        async with page.expect_download() as download_info:
-                            try:
-                                await page.goto(url, referer=referer if referer else '')
-                            except Exception:
-                                pass
-                            with NamedTemporaryFile() as tmp_f:
-                                download = await download_info.value
-                                await download.save_as(tmp_f.name)
-                                filename = download.suggested_filename
-                                with open(tmp_f.name, "rb") as f:
-                                    file_content = f.read()
-                                if page_capture_state is not None:
-                                    page_capture_state['multiple_downloads'].append((filename, file_content))
-                    except PlaywrightTimeoutError:
-                        self.logger.debug('No download has been triggered.')
-                        raise initial_error
-                    except Error as e:
+            if current_page_only:
+                # Snapshot the current page state without navigation or recursion.
+                try:
+                    to_return['frames'] = await self.make_frame_tree(page.main_frame)
+
+                    if frames := to_return.get('frames'):
+                        if content := frames.get('content'):
+                            to_return['html'] = content
+                        if u := frames.get('url'):
+                            if not u:
+                                self.logger.error('Unable to get the URL of the main frame.')
+                                u = '/!\\ Unknown /!\\'
+                            to_return['last_redirected_url'] = u
+
+                    if 'html' in to_return and to_return['html'] is not None and with_favicon:
                         try:
-                            error_msg = download.failure()
-                            if not error_msg:
-                                raise e
-                            errors.append(f"Error while downloading: {error_msg}")
-                            self.logger.info(f'Error while downloading: {error_msg}')
-                            self.should_retry = True
-                        except Exception:
-                            raise e
-                else:
-                    raise initial_error
-            else:
-                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
-                try:
-                    await page.bring_to_front()
-                    self.logger.debug('Page moved to front.')
-                except Error as e:
-                    self.logger.warning(f'Unable to bring the page to the front: {e}.')
+                            to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
+                            if self._mark_favicons_done is not None:
+                                self._mark_favicons_done()
+                        except (TimeoutError, asyncio.TimeoutError) as e:
+                            self.logger.warning(f'[Timeout] Unable to get favicons on current page: {e}')
+                        except Exception as e:
+                            self.logger.warning(f'Unable to get favicons on current page: {e}')
 
-                try:
-                    if self.headless:
-                        await self.__instrumentation(page, url, allow_tracking, final_wait)
+                    if with_screenshot:
+                        to_return['png'] = await self._failsafe_get_screenshot(page)
+
+                    if captured_url := to_return.get('last_redirected_url'):
+                        self._already_captured.add(captured_url)
                     else:
-                        self.logger.debug('Headed mode, skipping instrumentation.')
-                        await self._wait_for_random_timeout(page, self._capture_timeout - 5)
+                        self._already_captured.add(page.url)
+                except PlaywrightTimeoutError as e:
+                    errors.append(f"The capture took too long while capturing current page - {e.message}")
+                    self.should_retry = True
+                except (asyncio.TimeoutError, TimeoutError):
+                    errors.append("Something in the capture of the current page took too long")
+                    self.should_retry = True
+                except TargetClosedError as e:
+                    errors.append(f"The target was closed while capturing current page - {e}")
+                    self.should_retry = True
+                except Error as e:
+                    self._update_exceptions(e)
+                    errors.append(e.message)
+                    to_return['error_name'] = e.name
+                    if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
+                        self.logger.info(f'Unable to process current page: {e.name}')
+                    elif self._retry_network_error(e) or self._retry_browser_error(e):
+                        self.logger.info(f'Issue while capturing current page (retrying): {e.message}')
+                        errors.append(f'Issue while capturing current page: {e.message}')
+                        self.should_retry = True
+                    else:
+                        self.logger.exception(f'Something went poorly while capturing current page: "{e.name}" - {e.message}')
                 except Exception as e:
-                    self.logger.exception(f'Error during instrumentation: {e}')
-
-                # ### --------------------------------------
-                # NOTE 2025-11-12: disabling the offline setting as it doesn't seem
-                # to solve the issue with the frames, but causes some failure
-                # while getting the stored state
-
-                # Pass browser to offline mode to get content and make screenshot
-                # await self.context.set_offline(True)
-                # await self._safe_wait(page, 5)
-                # self.logger.info('Browser offline.')
-                # Abort everything
-                # await page.route("**/*", lambda route: route.abort())
-                # await self._safe_wait(page, 5)
-
-                to_return['frames'] = await self.make_frame_tree(page.main_frame)
-
-                # ### --------------------------------------
-
-                # The first content is what we call rendered HTML, keep it as-is
-                if frames := to_return.get('frames'):
-                    if content := frames.get('content'):
-                        to_return['html'] = content
-                    if u := frames.get('url'):
-                        if not u:
-                            self.logger.error('Unable to get the URL of the main frame.')
-                            u = '/!\\ Unknown /!\\'
-                        to_return['last_redirected_url'] = u
-
-                if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    # We're probably (?) safe only looking for favicons in the main frame.
-                    # TODO: check that?
-                    try:
-                        to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
-                        if page_capture_state is not None:
-                            page_capture_state['mark_favicons_done']()
-                    except (TimeoutError, asyncio.TimeoutError) as e:
-                        self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
-                    except Exception as e:
-                        self.logger.warning(f'Unable to get favicons: {e}')
-
-                if with_screenshot:
-                    to_return['png'] = await self._failsafe_get_screenshot(page)
-
-                # Keep that all the way down there in case the capture failed.
-                self._already_captured.add(url)
-
-                if depth > 0 and to_return.get('html') and to_return['html']:
-                    # TODO with children frames:
-                    # 1. if the frame hasa URL, use that as base URL/referer for the subsequent captures
-                    # 2. if it doesn't, the base URL is the url of the parent (which may or may not be the main frame)
-                    if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
-                        to_return['children'] = []
-                        depth -= 1
-                        total_urls = len(child_urls)
-                        max_capture_time = max(int(max_depth_capture_time / total_urls), self._minimal_timeout)
-                        max_captures = int(max_depth_capture_time / max_capture_time)
-                        if max_captures < total_urls:
-                            self.logger.warning(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Only capturing the first {max_captures} URLs in the page.')
-                            if max_captures <= 0:
-                                # We don't really have time for even one capture, but let's try anyway.
-                                child_urls = child_urls[:1]
-                            else:
-                                child_urls = child_urls[:max_captures]
-                        self.logger.info(f'Capturing children, {max_captures} URLs')
-                        consecutive_errors = 0
-                        for index, url in enumerate(child_urls):
-                            self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
-                            start_time = time.time()
-                            if page.is_closed():
-                                self.logger.info('Page is closed, unable to capture children.')
-                                break
+                    errors.append(str(e))
+                    if str(e) in ['Connection closed while reading from the driver']:
+                        self.logger.info(f'Issue while capturing current page (retrying): {e}')
+                        errors.append(f'Issue while capturing current page: {e}')
+                        self.should_retry = True
+                    else:
+                        raise e
+            else:
+                # Standard navigation + capture path.
+                assert url is not None
+                try:
+                    await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
+                except Error as initial_error:
+                    self._update_exceptions(initial_error)
+                    # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
+                    if initial_error.name in ['Download is starting', 'net::ERR_ABORTED']:
+                        # page.goto failed, but it triggered a download event.
+                        # Let's re-trigger it.
+                        try:
+                            async with page.expect_download() as download_info:
+                                try:
+                                    await page.goto(url, referer=referer if referer else '')
+                                except Exception:
+                                    pass
+                                with NamedTemporaryFile() as tmp_f:
+                                    download = await download_info.value
+                                    await download.save_as(tmp_f.name)
+                                    filename = download.suggested_filename
+                                    with open(tmp_f.name, "rb") as f:
+                                        file_content = f.read()
+                                    self._multiple_downloads.append((filename, file_content))
+                        except PlaywrightTimeoutError:
+                            self.logger.debug('No download has been triggered.')
+                            raise initial_error
+                        except Error as e:
                             try:
-                                async with timeout(max_capture_time + 1):  # just adding a bit of padding so playwright has the chance to raise the exception first
-                                    child_capture = await self.capture_page(
-                                        url=url, referer=page.url,
-                                        page=page, depth=depth,
-                                        rendered_hostname_only=rendered_hostname_only,
-                                        max_depth_capture_time=max_capture_time,
-                                        with_screenshot=with_screenshot,
-                                        final_wait=final_wait)
-                                    if with_trusted_timestamps:
-                                        try:
-                                            await self._get_trusted_timestamps(child_capture)
-                                        except Exception as e:
-                                            self.logger.warning(f'Unable to get the trusted timestamps for the clild capture : {e}.')
-                                    to_return['children'].append(child_capture)  # type: ignore[union-attr]
-                            except (TimeoutError, asyncio.TimeoutError):
-                                self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
-                                consecutive_errors += 1
-                            except Exception as e:
-                                self.logger.warning(f'Error while capturing child "{url}": {e}. {len(child_urls) - index - 1} more to go.')
-                                consecutive_errors += 1
-                            else:
-                                consecutive_errors = 0
-                                runtime = int(time.time() - start_time)
-                                self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {len(child_urls) - index - 1} to go.')
-
-                            if consecutive_errors >= 5:
-                                # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
-                                self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
-                                errors.append("Got more than 5 consecutive errors while capturing children")
+                                error_msg = download.failure()
+                                if not error_msg:
+                                    raise e
+                                errors.append(f"Error while downloading: {error_msg}")
+                                self.logger.info(f'Error while downloading: {error_msg}')
                                 self.should_retry = True
-                                break
+                            except Exception:
+                                raise e
+                    else:
+                        raise initial_error
+                else:
+                    await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
+                    try:
+                        await page.bring_to_front()
+                        self.logger.debug('Page moved to front.')
+                    except Error as e:
+                        self.logger.warning(f'Unable to bring the page to the front: {e}.')
 
-                            try:
-                                await page.go_back()
-                            except PlaywrightTimeoutError:
-                                self.logger.info('Go back timed out, it is probably not a big deal.')
-                            except Exception as e:
-                                self.logger.info(f'Unable to go back: {e}.')
+                    try:
+                        if self.headless:
+                            await self.__instrumentation(page, url, allow_tracking, final_wait)
+                        else:
+                            self.logger.debug('Headed mode, skipping instrumentation.')
+                            await self._wait_for_random_timeout(page, self._capture_timeout - 5)
+                    except Exception as e:
+                        self.logger.exception(f'Error during instrumentation: {e}')
+
+                    # ### --------------------------------------
+                    # NOTE 2025-11-12: disabling the offline setting as it doesn't seem
+                    # to solve the issue with the frames, but causes some failure
+                    # while getting the stored state
+
+                    # Pass browser to offline mode to get content and make screenshot
+                    # await self.context.set_offline(True)
+                    # await self._safe_wait(page, 5)
+                    # self.logger.info('Browser offline.')
+                    # Abort everything
+                    # await page.route("**/*", lambda route: route.abort())
+                    # await self._safe_wait(page, 5)
+
+                    to_return['frames'] = await self.make_frame_tree(page.main_frame)
+
+                    # ### --------------------------------------
+
+                    # The first content is what we call rendered HTML, keep it as-is
+                    if frames := to_return.get('frames'):
+                        if content := frames.get('content'):
+                            to_return['html'] = content
+                        if u := frames.get('url'):
+                            if not u:
+                                self.logger.error('Unable to get the URL of the main frame.')
+                                u = '/!\\ Unknown /!\\'
+                            to_return['last_redirected_url'] = u
+
+                    if 'html' in to_return and to_return['html'] is not None and with_favicon:
+                        # We're probably (?) safe only looking for favicons in the main frame.
+                        # TODO: check that?
+                        try:
+                            to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
+                            if self._mark_favicons_done is not None:
+                                self._mark_favicons_done()
+                        except (TimeoutError, asyncio.TimeoutError) as e:
+                            self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
+                        except Exception as e:
+                            self.logger.warning(f'Unable to get favicons: {e}')
+
+                    if with_screenshot:
+                        to_return['png'] = await self._failsafe_get_screenshot(page)
+
+                    # Keep that all the way down there in case the capture failed.
+                    self._already_captured.add(url)
+
+                    if depth > 0 and to_return.get('html') and to_return['html']:
+                        # TODO with children frames:
+                        # 1. if the frame hasa URL, use that as base URL/referer for the subsequent captures
+                        # 2. if it doesn't, the base URL is the url of the parent (which may or may not be the main frame)
+                        if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
+                            to_return['children'] = []
+                            depth -= 1
+                            total_urls = len(child_urls)
+                            max_capture_time = max(int(max_depth_capture_time / total_urls), self._minimal_timeout)
+                            max_captures = int(max_depth_capture_time / max_capture_time)
+                            if max_captures < total_urls:
+                                self.logger.warning(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Only capturing the first {max_captures} URLs in the page.')
+                                if max_captures <= 0:
+                                    # We don't really have time for even one capture, but let's try anyway.
+                                    child_urls = child_urls[:1]
+                                else:
+                                    child_urls = child_urls[:max_captures]
+                            self.logger.info(f'Capturing children, {max_captures} URLs')
+                            consecutive_errors = 0
+                            for index, url in enumerate(child_urls):
+                                self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
+                                start_time = time.time()
+                                if page.is_closed():
+                                    self.logger.info('Page is closed, unable to capture children.')
+                                    break
+                                try:
+                                    async with timeout(max_capture_time + 1):  # just adding a bit of padding so playwright has the chance to raise the exception first
+                                        child_capture = await self.capture_page(
+                                            url=url, referer=page.url,
+                                            page=page, depth=depth,
+                                            rendered_hostname_only=rendered_hostname_only,
+                                            max_depth_capture_time=max_capture_time,
+                                            with_screenshot=with_screenshot,
+                                            final_wait=final_wait)
+                                        if with_trusted_timestamps:
+                                            try:
+                                                await self._get_trusted_timestamps(child_capture)
+                                            except Exception as e:
+                                                self.logger.warning(f'Unable to get the trusted timestamps for the clild capture : {e}.')
+                                        to_return['children'].append(child_capture)  # type: ignore[union-attr]
+                                except (TimeoutError, asyncio.TimeoutError):
+                                    self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
+                                    consecutive_errors += 1
+                                except Exception as e:
+                                    self.logger.warning(f'Error while capturing child "{url}": {e}. {len(child_urls) - index - 1} more to go.')
+                                    consecutive_errors += 1
+                                else:
+                                    consecutive_errors = 0
+                                    runtime = int(time.time() - start_time)
+                                    self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {len(child_urls) - index - 1} to go.')
+
+                                if consecutive_errors >= 5:
+                                    # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
+                                    self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
+                                    errors.append("Got more than 5 consecutive errors while capturing children")
+                                    self.should_retry = True
+                                    break
+
+                                try:
+                                    await page.go_back()
+                                except PlaywrightTimeoutError:
+                                    self.logger.info('Go back timed out, it is probably not a big deal.')
+                                except Exception as e:
+                                    self.logger.info(f'Unable to go back: {e}.')
 
         except PlaywrightTimeoutError as e:
             errors.append(f"The capture took too long - {e.message}")
@@ -1483,122 +1538,11 @@ class Capture():
             if not capturing_sub:
                 await self._finalize_capture(
                     page=page,
-                    store_request=page_capture_state['store_request'] if page_capture_state is not None else None,
-                    multiple_downloads=page_capture_state['multiple_downloads'] if page_capture_state is not None else None,
                     to_return=to_return,
                     errors=errors,
                     with_trusted_timestamps=with_trusted_timestamps,
                 )
         self.logger.debug('Capture done')
-        return to_return
-
-    async def capture_current_page(
-        self,
-        page: Page,
-        *,
-        rendered_hostname_only: bool=True,
-        with_screenshot: bool=True,
-        with_favicon: bool=False,
-        with_trusted_timestamps: bool=False,
-        page_capture_state: PageCaptureState | None=None,
-    ) -> CaptureResponse:
-        """Capture the state of the current page only.
-
-        This method is the final-page path used by interactive captures. It does
-        not navigate, recurse into links, or perform crawler-style expansion.
-        It snapshots the page as it exists when called, then runs the normal
-        single-page finalization steps. If the caller already ran
-        setup_page_capture, pass its state so download and favicon bookkeeping are
-        finalized consistently.
-        """
-
-        to_return: CaptureResponse = {}
-        errors: list[str] = []
-
-        try:
-            try:
-                # Build frame tree and extract main HTML / URL, similar to capture_page
-                to_return['frames'] = await self.make_frame_tree(page.main_frame)
-
-                if frames := to_return.get('frames'):
-                    # The first content is what we call rendered HTML, keep it as-is
-                    if content := frames.get('content'):
-                        to_return['html'] = content
-                    if u := frames.get('url'):
-                        if not u:
-                            self.logger.error('Unable to get the URL of the main frame.')
-                            u = '/!\\ Unknown /!\\'
-                        to_return['last_redirected_url'] = u
-
-                if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    # We're probably (?) safe only looking for favicons in the main frame.
-                    # TODO: check that?
-                    try:
-                        to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
-                        if page_capture_state is not None:
-                            page_capture_state['mark_favicons_done']()
-                    except (TimeoutError, asyncio.TimeoutError) as e:
-                        self.logger.warning(f'[Timeout] Unable to get favicons on current page: {e}')
-                    except Exception as e:
-                        self.logger.warning(f'Unable to get favicons on current page: {e}')
-
-                if with_screenshot:
-                    to_return['png'] = await self._failsafe_get_screenshot(page)
-
-                # Keep that all the way down there in case the capture failed.
-                if url := to_return.get('last_redirected_url'):
-                    self._already_captured.add(url)
-                else:
-                    self._already_captured.add(page.url)
-
-            except PlaywrightTimeoutError as e:
-                errors.append(f"The capture took too long while capturing current page - {e.message}")
-                self.should_retry = True
-            except (asyncio.TimeoutError, TimeoutError):
-                errors.append("Something in the capture of the current page took too long")
-                self.should_retry = True
-            except TargetClosedError as e:
-                errors.append(f"The target was closed while capturing current page - {e}")
-                self.should_retry = True
-            except Error as e:
-                # NOTE: there are a lot of errors that look like duplicates and they are triggered at different times in the process.
-                # it is tricky to figure our which one should (and should not) trigger a retry. Below is our best guess and it will change over time.
-                self._update_exceptions(e)
-                errors.append(e.message)
-                to_return['error_name'] = e.name
-                # TODO: check e.message and figure out if it is worth retrying or not.
-                # NOTE: e.name is generally (always?) "Error"
-                if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
-                    self.logger.info(f'Unable to process current page: {e.name}')
-                elif self._retry_network_error(e) or self._retry_browser_error(e):
-                    # this one sounds like something we can retry...
-                    self.logger.info(f'Issue while capturing current page (retrying): {e.message}')
-                    errors.append(f'Issue while capturing current page: {e.message}')
-                    self.should_retry = True
-                else:
-                    # Unexpected ones
-                    self.logger.exception(f'Something went poorly while capturing current page: "{e.name}" - {e.message}')
-            except Exception as e:
-                # we may get a non-playwright exception to.
-                # The ones we try to handle here should be treated as if they were.
-                errors.append(str(e))
-                if str(e) in ['Connection closed while reading from the driver']:
-                    self.logger.info(f'Issue while capturing current page (retrying): {e}')
-                    errors.append(f'Issue while capturing current page: {e}')
-                    self.should_retry = True
-                else:
-                    raise e
-        finally:
-            await self._finalize_capture(
-                page=page,
-                store_request=page_capture_state['store_request'] if page_capture_state is not None else None,
-                multiple_downloads=page_capture_state['multiple_downloads'] if page_capture_state is not None else None,
-                to_return=to_return,
-                errors=errors,
-                with_trusted_timestamps=with_trusted_timestamps,
-            )
-
-        self.logger.debug('Current-page capture done')
         return to_return
 
     async def _get_trusted_timestamps(self, capture_response: CaptureResponse) -> None:
