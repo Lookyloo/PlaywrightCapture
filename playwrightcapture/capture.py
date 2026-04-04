@@ -19,7 +19,7 @@ from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal, TYPE_CHECKING
-from collections.abc import Awaitable, Callable, Mapping, MutableMapping
+from collections.abc import Awaitable, Callable, MutableMapping
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs, unquote_plus
 from zipfile import ZipFile
 
@@ -480,49 +480,6 @@ class Capture():
     def cookies(self) -> list[Cookie]:
         return self._cookies
 
-    def _coerce_cookie_mapping(self, cookie: object) -> Mapping[str, Any] | None:
-        """Normalize supported cookie payload shapes to a mapping.
-
-        Accepts plain mappings, Pydantic-style models, and simple objects with
-        cookie attributes so older callers can keep passing their existing
-        cookie objects.
-        """
-        if isinstance(cookie, Mapping):
-            return cookie
-
-        model_dump = getattr(cookie, 'model_dump', None)
-        if callable(model_dump):
-            try:
-                dumped_cookie = model_dump(exclude_none=True)
-            except TypeError:
-                dumped_cookie = model_dump()
-            if isinstance(dumped_cookie, Mapping):
-                return dumped_cookie
-
-        dict_method = getattr(cookie, 'dict', None)
-        if callable(dict_method):
-            try:
-                dumped_cookie = dict_method(exclude_none=True)
-            except TypeError:
-                dumped_cookie = dict_method()
-            if isinstance(dumped_cookie, Mapping):
-                return dumped_cookie
-
-        cookie_name = getattr(cookie, 'name', None)
-        cookie_value = getattr(cookie, 'value', None)
-        if cookie_name is None or cookie_value is None:
-            return None
-
-        normalized_cookie: dict[str, Any] = {
-            'name': cookie_name,
-            'value': cookie_value,
-        }
-        for optional_key in ('url', 'domain', 'path', 'expires', 'httpOnly', 'secure', 'sameSite', 'partitionKey'):
-            optional_value = getattr(cookie, optional_key, None)
-            if optional_value is not None:
-                normalized_cookie[optional_key] = optional_value
-        return normalized_cookie
-
     @cookies.setter
     def cookies(self, cookies: list[Cookie | dict[str, Any] | object] | None) -> None:
         '''Cookies to send along to the initial request.
@@ -539,13 +496,8 @@ class Capture():
             if isinstance(raw_cookie, Cookie):
                 self._cookies.append(raw_cookie)
                 continue
-
-            cookie = self._coerce_cookie_mapping(raw_cookie)
-            if cookie is None:
-                self.logger.warning(f'Ignoring unsupported cookie payload: {raw_cookie!r}')
-                continue
             try:
-                self._cookies.append(Cookie.model_validate(cookie))
+                self._cookies.append(Cookie.model_validate(raw_cookie))
             except Exception as e:
                 self.logger.warning(f'Invalid cookie: {e}')
 
