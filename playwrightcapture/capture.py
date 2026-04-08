@@ -138,26 +138,36 @@ class Capture():
 
     _requests: dict[str, bytes] = {}
 
-    def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
-                 proxy: str | dict[str, str] | None=None,
-                 socks5_dns_resolver: str | list[str] | None=None,
-                 general_timeout_in_sec: int | None=None, loglevel: str | int='INFO',
-                 uuid: str | None=None, headless: bool=True,
-                 *, init_script: str | None=None, tt_settings: TrustedTimestampSettings | None=None,
-                 display: str | None=None):
+    # Initialize the values with getter/setter
+    _headers: Headers = {}
+    _cookies: list[Cookie] = []
+    _storage: StorageState = {}
+    _viewport: ViewportSize | None = None
+    _user_agent: str = ''
+    _http_credentials: HttpCredentials = {}
+    _geolocation: Geolocation = {}
+    _timezone_id: str = ''
+    _locale: str = 'en-US'
+    _color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
+    _java_script_enabled: bool = True
+    _capture_timeout: int = _default_timeout
+    _proxy: ProxySettings = {}
+
+    # Do not wait for webfonts before taking screenshots.
+    # 2026-04-08: Pass the env to the process in the launch call
+    _env: dict[str, str | float | bool] = {'PW_TEST_SCREENSHOT_NO_FONTS_READY': '1'}
+
+    def __init__(self, loglevel: str | int='INFO', uuid: str | None=None, *,
+                 capture_settings: CaptureSettings,
+                 tt_settings: TrustedTimestampSettings | None=None,
+                 env: dict[str, str | float | bool] | None=None):
         """Captures a page with Playwright.
 
-        :param browser: The browser to use for the capture.
-        :param device_name: The pre-defined device to use for the capture (from playwright).)
-        :param proxy: The external proxy to use for the capture.
-        :param socks5_dns_resolver: DNS resolver to use for the socks5 proxy and fill the HAR file.
-        :param general_timeout_in_sec: The general timeout for the capture, including children.
         :param loglevel: Python loglevel
         :param uuid: The UUID of the capture.
-        :param headless: Whether to run the browser in headless mode. Set to False only when a graphical environment is available.
-        :param init_script: An optional JavaScript executed on each page - See https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-init-script
-        :param tt_settings: Optional trusted-timestamp configuration used to timestamp capture artifacts.
-        :param display: Optional X11 display passed to the browser subprocess. Used by interactive headed captures to isolate concurrent sessions.
+        :param capture_settings: All the settings for the capture
+        :param tt_settings: The trusted timestamp settings
+        :param env: Optional env variables passed to the playwright process. For interactive captures, pass the DISPLAY env variable there
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
@@ -167,53 +177,29 @@ class Capture():
             self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': self.uuid})
         else:
             self.logger = master_logger
-        self.browser_name: BROWSER = browser if browser else 'chromium'
 
-        if general_timeout_in_sec is None:
-            self._capture_timeout = self._default_timeout
-        else:
-            self._capture_timeout = general_timeout_in_sec
-            if self._capture_timeout < self._minimal_timeout:
-                self.logger.warning(f'Timeout given: {general_timeout_in_sec}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
-                self._capture_timeout = self._minimal_timeout
+        self.browser_name = capture_settings.browser
+        self.device_name = capture_settings.device_name
+        self.socks5_dns_resolver = capture_settings.socks5_dns_resolver
+        self.headless = capture_settings.headless
+        self._init_script = capture_settings.init_script
 
-        self.device_name: str | None = device_name
-        self.headless: bool = headless
-        self.proxy: ProxySettings = {}
-        self.socks5_dns_resolver: str | list[str] | None = socks5_dns_resolver
-        if proxy:
-            if isinstance(proxy, str):
-                self.proxy = self.__prepare_proxy_playwright(proxy)
-            elif isinstance(proxy, dict):
-                self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
-                              'username': proxy.get('username', ''),
-                              'password': proxy.get('password', '')}
-            elif isinstance(proxy, int):
-                # This is clearly a mistake, just ignoring it
-                self.logger.warning('Proxy is an integer, this is a mistake, ignoring it.')
-            else:
-                raise InvalidPlaywrightParameter(f'Invalid proxy parameter: "{proxy}" ({type(proxy)})')
+        self.headers = capture_settings.headers
+        self.cookies = [c.model_dump(exclude_none=True) for c in capture_settings.cookies] if capture_settings.cookies else None
+        self.storage = capture_settings.storage
+        self.viewport = capture_settings.viewport.model_dump(exclude_none=True) if capture_settings.viewport else None
+        self.user_agent = capture_settings.user_agent
+        self.http_credentials = capture_settings.http_credentials.model_dump(exclude_none=True) if capture_settings.http_credentials else None
+        self.geolocation = capture_settings.geolocation.model_dump(exclude_none=True) if capture_settings.geolocation else None
+        self.timezone_id = capture_settings.timezone_id
+        self.locale = capture_settings.locale
+        self.color_scheme = capture_settings.color_scheme
+        self.java_script_enabled = capture_settings.java_script_enabled
+        self.capture_timeout = capture_settings.general_timeout_in_sec
+        self.proxy = capture_settings.proxy
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
-        self._cookies: list[Cookie] = []
-        self._storage: StorageState = {}
-        self._http_credentials: HttpCredentials = {}
-        self._geolocation: Geolocation = {}
-        self._headers: Headers = {}
-        self._viewport: ViewportSize | None = None
-        self._user_agent: str = ''
-        self._timezone_id: str = ''
-        self._locale: str = 'en-US'
-        self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
-        self._java_script_enabled = True
-
-        self._init_script = init_script
-
-        self.tt_settings = tt_settings
-        # X11 display to use for the browser subprocess.  Passed via env so each
-        # concurrent capture gets its own display without mutating os.environ.
-        self._display = display
 
         # Per-page capture state populated by setup_page_capture().
         self._multiple_downloads: list[tuple[str, bytes]] = []
@@ -225,12 +211,12 @@ class Capture():
         # Initialize the magic DB
         self.magicdb = MagicDb()
 
-    def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
-        splitted = urlsplit(proxy)
-        if splitted.username and splitted.password:
-            return {'username': splitted.username, 'password': splitted.password,
-                    'server': urlunsplit((splitted.scheme, f'{splitted.hostname}:{splitted.port}', splitted.path, splitted.query, splitted.fragment))}
-        return {'server': proxy}
+        # Trusted Timestamp Settings are provided by LacusCore
+        self.tt_settings = tt_settings
+
+        # Prepare the env to use for playwright
+        if env:
+            self._env.update(env)
 
     def __prepare_proxy_aiohttp(self, proxy: ProxySettings) -> str:
         if 'username' in proxy and 'password' in proxy:
@@ -240,12 +226,6 @@ class Capture():
 
     async def __aenter__(self) -> Capture:
         """Launch Playwright and the configured browser for this capture."""
-
-        # Do not wait for webfonts before taking screenshots.
-        # 2026-02-02: the environment is copied into the process when initialized, so we need to set it globally here,
-        # and not in the method where we take the screenshot
-        os.environ['PW_TEST_SCREENSHOT_NO_FONTS_READY'] = '1'
-
         self.playwright = await async_playwright().start()
 
         if self.device_name:
@@ -262,14 +242,11 @@ class Capture():
                     '--unsafely-treat-insecure-origin-as-secure',  # Allows to run crypto API on .onion URLs (See https://github.com/Lookyloo/PlaywrightCapture/issues/65)
                     ]
 
-        # Build a per-launch environment so concurrent captures each target
-        # their own X11 display without mutating the process-global DISPLAY.
-        launch_env: dict[str, str | float | bool] | None = None
-        if self._display:
-            launch_env = {**os.environ, 'DISPLAY': self._display}
-            self.logger.info(f'Launching browser on DISPLAY {self._display}')
-        else:
-            self.logger.info(f'Launching browser on default DISPLAY {os.environ.get("DISPLAY", "<unset>")}')
+        launch_env: dict[str, Any] | None = None
+        if self._env:
+            # add/override env variables
+            # NOTE: process.env in the playwright config means os.environ for python
+            launch_env = {**os.environ, **self._env}
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
             channel="chromium" if self.browser_name == "chromium" else None,
@@ -415,6 +392,45 @@ class Capture():
         page.on("dialog", lambda dialog: dialog.accept())
         page.on("download", handle_download)
         return page
+
+    def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
+        splitted = urlsplit(proxy)
+        if splitted.username and splitted.password:
+            return {'username': splitted.username, 'password': splitted.password,
+                    'server': urlunsplit((splitted.scheme, f'{splitted.hostname}:{splitted.port}', splitted.path, splitted.query, splitted.fragment))}
+        return {'server': proxy}
+
+    @property
+    def proxy(self) -> ProxySettings:
+        return self._proxy
+
+    @proxy.setter
+    def proxy(self, proxy: str | dict[str, str] | None) -> None:
+        if proxy:
+            if isinstance(proxy, str):
+                self._proxy = self.__prepare_proxy_playwright(proxy)
+            elif isinstance(proxy, dict):
+                self._proxy = {'server': proxy['server'],
+                               'bypass': proxy.get('bypass', ''),
+                               'username': proxy.get('username', ''),
+                               'password': proxy.get('password', '')}
+            else:
+                raise InvalidPlaywrightParameter(f'Invalid proxy parameter: "{proxy}" ({type(proxy)})')
+
+    @property
+    def capture_timeout(self) -> int:
+        return self._capture_timeout
+
+    @capture_timeout.setter
+    def capture_timeout(self, timeout: int | None) -> None:
+        if not timeout:
+            self._capture_timeout = self._minimal_timeout
+        else:
+            if timeout < self._minimal_timeout:
+                self.logger.warning(f'Timeout given: {timeout}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
+                self._capture_timeout = self._minimal_timeout
+            else:
+                self._capture_timeout = timeout
 
     @property
     def locale(self) -> str:
@@ -1226,19 +1242,6 @@ class Capture():
             except Exception as e:
                 self.logger.warning(f'Unable to get trusted timestamps: {e}')
 
-    def apply_capture_settings(self, settings: CaptureSettings) -> None:
-        self.headers = settings.headers
-        self.cookies = [c.model_dump(exclude_none=True) for c in settings.cookies] if settings.cookies else None
-        self.storage = settings.storage
-        self.viewport = settings.viewport.model_dump(exclude_none=True) if settings.viewport else None
-        self.user_agent = settings.user_agent
-        self.http_credentials = settings.http_credentials.model_dump(exclude_none=True) if settings.http_credentials else None
-        self.geolocation = settings.geolocation.model_dump(exclude_none=True) if settings.geolocation else None
-        self.timezone_id = settings.timezone_id
-        self.locale = settings.locale
-        self.color_scheme = settings.color_scheme
-        self.java_script_enabled = settings.java_script_enabled
-
     async def open_page(self, page: Page, url: str, errors: list[str], referer: str | None=None) -> None:
         try:
             await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
@@ -1342,20 +1345,21 @@ class Capture():
         errors: list[str] = []
         capturing_sub = False
 
-        try:
-            if current_page_only:
-                if page is None:
-                    raise InvalidPlaywrightParameter('current_page_only requires an initialized page')
-            elif page is not None:
+        if current_page_only and page is None:
+            # No instrumentation.
+            raise InvalidPlaywrightParameter('current_page_only requires an initialized page')
+        else:
+            if not url:
+                raise InvalidPlaywrightParameter('The URL to capture is missing.')
+            if page is None:
+                page = await self.setup_page_capture(allow_tracking=allow_tracking)
+            else:
                 # Automated capture with depth > 0
                 capturing_sub = True
-            else:
+
+        try:
+            if not current_page_only:
                 # Standard navigation + capture path.
-                if not url:
-                    raise InvalidPlaywrightParameter('A URL is required')
-                page = await self.setup_page_capture(allow_tracking=allow_tracking)
-                if capture_settings:
-                    self.apply_capture_settings(capture_settings)
                 await self.open_page(page, url, errors, referer)
 
                 try:
