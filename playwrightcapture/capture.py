@@ -84,7 +84,7 @@ class CaptureResponse(TypedDict, total=False):
 
     last_redirected_url: str
     har: dict[str, Any] | None
-    cookies: list[Cookie] | None
+    cookies: list[dict[str, Any]] | None
     storage: StorageState | None
     error: str | None
     error_name: str | None
@@ -182,6 +182,7 @@ class Capture():
         self.device_name = capture_settings.device_name
         self.socks5_dns_resolver = capture_settings.socks5_dns_resolver
         self.headless = capture_settings.headless
+        self.interactive = capture_settings.interactive
         self._init_script = capture_settings.init_script
 
         self.headers = capture_settings.headers
@@ -241,8 +242,21 @@ class Capture():
             args = ['--disable-blink-features=AutomationControlled',  # Avoids setting navigator.webdriver to True
                     '--unsafely-treat-insecure-origin-as-secure',  # Allows to run crypto API on .onion URLs (See https://github.com/Lookyloo/PlaywrightCapture/issues/65)
                     ]
+            if self.interactive:
+                # Force X, required to use xpra and the DISPLAY env variable
+                args.append('--ozone-platform=x11')
 
         launch_env: dict[str, Any] | None = None
+        if self.interactive:
+            # set required env variables to force the browsers to use X11
+            if self.browser_name == "firefox":
+                self._env.update({'MOZ_ENABLE_WAYLAND': '0', 'DISABLE_WAYLAND': '1'})
+            elif self.browser_name == "webkit":
+                self._env.update({'GDK_BACKEND': 'x11'})
+                # debug
+                # self._env.update({'DEBUG': 'pw:protocol'})
+                # self._env.update({'DEBUG': 'pw:browser,pw:protocol'})
+
         if self._env:
             # add/override env variables
             # NOTE: process.env in the playwright config means os.environ for python
@@ -356,12 +370,19 @@ class Capture():
                 self.logger.info(f'Unable to force download: {e}')
                 await route.continue_()
 
-        try:
-            page = await self.context.new_page()
-        except Error as e:
-            self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
-            self.should_retry = True
-            raise PlaywrightCaptureException(f'Unable to create new page: {e}')
+        np_retry = 3
+        while np_retry > 0:
+            try:
+                page = await self.context.new_page()
+                break
+            except Error as e:
+                self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
+                np_retry -= 1
+                if np_retry <= 0:
+                    self.should_retry = True
+                    raise PlaywrightCaptureException(f'Unable to create new page: {e}')
+                else:
+                    await asyncio.sleep(1)
 
         if self.browser_name == 'chromium' and self.headless:
             # overwrite in chromium in headless mode, to trigger a download
@@ -613,6 +634,17 @@ class Capture():
             ua = self.user_agent
             vp = self.viewport
 
+        # NOTE 2026-04-10: Very specific edge case:
+        # * capture in interactive mode with xpra
+        # * the browser is webkit
+        # => setting a viewport fails with (possibly related to x11?):
+        # BrowserContext.new_page: Protocol error (Emulation.setDeviceMetricsOverride): Failed to resize window
+        # fun thing is that is seems to be working as expected with
+        # self._env.update({'DEBUG': 'pw:protocol'})
+        # Playwright bug: https://github.com/microsoft/playwright/issues/40149
+        # So skip the viewport for now, it's not a very big deal.
+        if self.interactive and self.browser_name == 'webkit':
+            vp = None
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
@@ -1147,7 +1179,8 @@ class Capture():
         # Collect cookies from the context (may time out or fail depending on page state).
         try:
             async with timeout(15):
-                to_return['cookies'] = [Cookie.model_validate(c) for c in await self.context.cookies()]
+                # The response must contain jsonable elements, use the model to normalize.
+                to_return['cookies'] = [Cookie.model_validate(c).model_dump(exclude_none=True) for c in await self.context.cookies()]
         except (TimeoutError, asyncio.TimeoutError):
             self.logger.warning("Unable to get cookies (timeout).")
             errors.append("Unable to get the cookies (timeout).")
