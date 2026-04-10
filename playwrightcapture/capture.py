@@ -17,8 +17,8 @@ from base64 import b64decode, b64encode
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
-from typing import Any, Literal, TYPE_CHECKING
-from collections.abc import MutableMapping
+from typing import Any, Literal, TYPE_CHECKING, overload
+from collections.abc import Awaitable, Callable, MutableMapping
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs, unquote_plus
 from zipfile import ZipFile
 
@@ -28,7 +28,7 @@ import orjson
 from aiohttp_socks import ProxyConnector
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
-from lookyloo_models import Cookie
+from lookyloo_models import Cookie, CaptureSettings
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -38,7 +38,7 @@ from rfc3161_client import TimestampRequestBuilder, TimeStampRequest, HashAlgori
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
-from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter
+from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter, PlaywrightCaptureException
 from .socks5dnslookup import Socks5Resolver
 
 from zoneinfo import available_timezones
@@ -84,7 +84,7 @@ class CaptureResponse(TypedDict, total=False):
 
     last_redirected_url: str
     har: dict[str, Any] | None
-    cookies: list[Cookie] | None
+    cookies: list[dict[str, Any]] | None
     storage: StorageState | None
     error: str | None
     error_name: str | None
@@ -138,23 +138,36 @@ class Capture():
 
     _requests: dict[str, bytes] = {}
 
-    def __init__(self, browser: BROWSER | None=None, device_name: str | None=None,
-                 proxy: str | dict[str, str] | None=None,
-                 socks5_dns_resolver: str | list[str] | None=None,
-                 general_timeout_in_sec: int | None=None, loglevel: str | int='INFO',
-                 uuid: str | None=None, headless: bool=True,
-                 *, init_script: str | None=None, tt_settings: TrustedTimestampSettings | None=None):
+    # Initialize the values with getter/setter
+    _headers: Headers = {}
+    _cookies: list[Cookie] = []
+    _storage: StorageState = {}
+    _viewport: ViewportSize | None = None
+    _user_agent: str = ''
+    _http_credentials: HttpCredentials = {}
+    _geolocation: Geolocation = {}
+    _timezone_id: str = ''
+    _locale: str = 'en-US'
+    _color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
+    _java_script_enabled: bool = True
+    _capture_timeout: int = _default_timeout
+    _proxy: ProxySettings = {}
+
+    # Do not wait for webfonts before taking screenshots.
+    # 2026-04-08: Pass the env to the process in the launch call
+    _env: dict[str, str | float | bool] = {'PW_TEST_SCREENSHOT_NO_FONTS_READY': '1'}
+
+    def __init__(self, loglevel: str | int='INFO', uuid: str | None=None, *,
+                 capture_settings: CaptureSettings,
+                 tt_settings: TrustedTimestampSettings | None=None,
+                 env: dict[str, str | float | bool] | None=None):
         """Captures a page with Playwright.
 
-        :param browser: The browser to use for the capture.
-        :param device_name: The pre-defined device to use for the capture (from playwright).)
-        :param proxy: The external proxy to use for the capture.
-        :param socks5_dns_resolver: DNS resolver to use for the socks5 proxy and fill the HAR file.
-        :param general_timeout_in_sec: The general timeout for the capture, including children.
         :param loglevel: Python loglevel
         :param uuid: The UUID of the capture.
-        :param headless: Whether to run the browser in headless mode. WARNING: requires to run in a graphical environment.
-        :param init_script: An optional JavaScript that will be executed on each page - See https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-init-script
+        :param capture_settings: All the settings for the capture
+        :param tt_settings: The trusted timestamp settings
+        :param env: Optional env variables passed to the playwright process. For interactive captures, pass the DISPLAY env variable there
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
@@ -164,60 +177,47 @@ class Capture():
             self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': self.uuid})
         else:
             self.logger = master_logger
-        self.browser_name: BROWSER = browser if browser else 'chromium'
 
-        if general_timeout_in_sec is None:
-            self._capture_timeout = self._default_timeout
-        else:
-            self._capture_timeout = general_timeout_in_sec
-            if self._capture_timeout < self._minimal_timeout:
-                self.logger.warning(f'Timeout given: {general_timeout_in_sec}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
-                self._capture_timeout = self._minimal_timeout
+        self.browser_name = capture_settings.browser
+        self.device_name = capture_settings.device_name
+        self.socks5_dns_resolver = capture_settings.socks5_dns_resolver
+        self.headless = capture_settings.headless
+        self.interactive = capture_settings.interactive
+        self._init_script = capture_settings.init_script
 
-        self.device_name: str | None = device_name
-        self.headless: bool = headless
-        self.proxy: ProxySettings = {}
-        self.socks5_dns_resolver: str | list[str] | None = socks5_dns_resolver
-        if proxy:
-            if isinstance(proxy, str):
-                self.proxy = self.__prepare_proxy_playwright(proxy)
-            elif isinstance(proxy, dict):
-                self.proxy = {'server': proxy['server'], 'bypass': proxy.get('bypass', ''),
-                              'username': proxy.get('username', ''),
-                              'password': proxy.get('password', '')}
-            elif isinstance(proxy, int):
-                # This is clearly a mistake, just ignoring it
-                self.logger.warning('Proxy is an integer, this is a mistake, ignoring it.')
-            else:
-                raise InvalidPlaywrightParameter(f'Invalid proxy parameter: "{proxy}" ({type(proxy)})')
+        self.headers = capture_settings.headers
+        self.cookies = [c.model_dump(exclude_none=True) for c in capture_settings.cookies] if capture_settings.cookies else None
+        self.storage = capture_settings.storage
+        self.viewport = capture_settings.viewport.model_dump(exclude_none=True) if capture_settings.viewport else None
+        self.user_agent = capture_settings.user_agent
+        self.http_credentials = capture_settings.http_credentials.model_dump(exclude_none=True) if capture_settings.http_credentials else None
+        self.geolocation = capture_settings.geolocation.model_dump(exclude_none=True) if capture_settings.geolocation else None
+        self.timezone_id = capture_settings.timezone_id
+        self.locale = capture_settings.locale
+        self.color_scheme = capture_settings.color_scheme
+        self.java_script_enabled = capture_settings.java_script_enabled
+        self.capture_timeout = capture_settings.general_timeout_in_sec
+        self.proxy = capture_settings.proxy
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
-        self._cookies: list[Cookie] = []
-        self._storage: StorageState = {}
-        self._http_credentials: HttpCredentials = {}
-        self._geolocation: Geolocation = {}
-        self._headers: Headers = {}
-        self._viewport: ViewportSize | None = None
-        self._user_agent: str = ''
-        self._timezone_id: str = ''
-        self._locale: str = 'en-US'
-        self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
-        self._java_script_enabled = True
 
-        self._init_script = init_script
+        # Per-page capture state populated by setup_page_capture().
+        self._multiple_downloads: list[tuple[str, bytes]] = []
+        self._store_request: Callable[[Request], Awaitable[None]] | None = None
 
-        self.tt_settings = tt_settings
+        # if true, stop getting images from requests
+        self.got_favicons = False
 
         # Initialize the magic DB
         self.magicdb = MagicDb()
 
-    def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
-        splitted = urlsplit(proxy)
-        if splitted.username and splitted.password:
-            return {'username': splitted.username, 'password': splitted.password,
-                    'server': urlunsplit((splitted.scheme, f'{splitted.hostname}:{splitted.port}', splitted.path, splitted.query, splitted.fragment))}
-        return {'server': proxy}
+        # Trusted Timestamp Settings are provided by LacusCore
+        self.tt_settings = tt_settings
+
+        # Prepare the env to use for playwright
+        if env:
+            self._env.update(env)
 
     def __prepare_proxy_aiohttp(self, proxy: ProxySettings) -> str:
         if 'username' in proxy and 'password' in proxy:
@@ -226,11 +226,7 @@ class Capture():
         return proxy['server']
 
     async def __aenter__(self) -> Capture:
-        '''Launch the browser'''
-        # Ignore the fonts by the time we take the screenshot
-        # 2026-02-02: the environment is copied into the process when initialized, so we need to set it globally here,
-        # and not in the method where we take the screenshot
-        os.environ['PW_TEST_SCREENSHOT_NO_FONTS_READY'] = '1'
+        """Launch Playwright and the configured browser for this capture."""
         self.playwright = await async_playwright().start()
 
         if self.device_name:
@@ -246,12 +242,31 @@ class Capture():
             args = ['--disable-blink-features=AutomationControlled',  # Avoids setting navigator.webdriver to True
                     '--unsafely-treat-insecure-origin-as-secure',  # Allows to run crypto API on .onion URLs (See https://github.com/Lookyloo/PlaywrightCapture/issues/65)
                     ]
+            if self.interactive:
+                # Force X, required to use xpra and the DISPLAY env variable
+                args.append('--ozone-platform=x11')
 
+        launch_env: dict[str, Any] | None = None
+        if self.interactive:
+            # set required env variables to force the browsers to use X11
+            if self.browser_name == "firefox":
+                self._env.update({'MOZ_ENABLE_WAYLAND': '0', 'DISABLE_WAYLAND': '1'})
+            elif self.browser_name == "webkit":
+                self._env.update({'GDK_BACKEND': 'x11'})
+                # debug
+                # self._env.update({'DEBUG': 'pw:protocol'})
+                # self._env.update({'DEBUG': 'pw:browser,pw:protocol'})
+
+        if self._env:
+            # add/override env variables
+            # NOTE: process.env in the playwright config means os.environ for python
+            launch_env = {**os.environ, **self._env}
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
             channel="chromium" if self.browser_name == "chromium" else None,
             args=args,
-            headless=self.headless
+            headless=self.headless,
+            env=launch_env,
         )
 
         # Set of URLs that were captured in that context
@@ -263,6 +278,7 @@ class Capture():
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        """Close browser resources and suppress exceptions like the upstream context manager."""
 
         try:
             await self.browser.close(reason="Closing browser at the end of the capture.")
@@ -282,6 +298,160 @@ class Capture():
                 self.logger.warning(f'Unable to remove temp HAR file {self._temp_harfile.name}: {e}')
 
         return True
+
+    async def setup_page_capture(self, *, allow_tracking: bool=False) -> Page:
+        """Prepare a page for a single-page capture without changing capture semantics.
+
+        This method preserves the existing per-page setup used by capture_page:
+        download tracking, request body storage for image responses, dialog
+        acceptance, and the PDF download workaround in headless Chromium.
+        Interactive sessions reuse it so the operator-driven session can still
+        finalize like a normal single-page capture later on.
+        """
+
+        # We don't need to be super strict on the lock, as it simply triggers a wait for network idle before stoping the capture
+        # but we still need it to be an integer in case we have more than one download triggered and one finished when the others haven't
+        self.wait_for_download = 0
+
+        # We may have multiple download triggered via JS
+        self._multiple_downloads = []
+
+        async def handle_download(download: Download) -> None:
+            # This method is called when a download event is triggered from JS in a page that also renders
+            try:
+                self.wait_for_download += 1
+                with NamedTemporaryFile() as tmp_f:
+                    self.logger.info('Got a download triggered from JS.')
+                    await download.save_as(tmp_f.name)
+                    filename = download.suggested_filename
+                    with open(tmp_f.name, "rb") as f:
+                        file_content = f.read()
+                    self._multiple_downloads.append((filename, file_content))
+                    self.logger.info('Done with download.')
+            except Exception as e:
+                if download.page.is_closed():
+                    # Page is closed, skip logging.
+                    pass
+                else:
+                    self.logger.warning(f'Unable to finish download triggered from JS: {e}')
+            finally:
+                self.wait_for_download -= 1
+
+        async def store_request(request: Request) -> None:
+            # This method is called on each request, to store the body (if it is an image) in a dict indexed by URL
+            if self.got_favicons or request.resource_type != 'image':
+                return
+            try:
+                if response := await request.response():
+                    if self.got_favicons:
+                        return
+                    if request.resource_type == 'image' and response.ok:
+                        try:
+                            if body := await response.body():
+                                m = self.magicdb.best_magic_buffer(body)
+                                if m.mime_type.startswith('image'):
+                                    self._requests[request.url] = body
+                        except Exception:
+                            pass
+            except Exception as e:
+                self.logger.info(f'Unable to store request: {e}')
+
+        async def _override_content_disposition_handler(route: Route, request: Request) -> None:
+            """Special case to handle PDF rendered in the browser directly"""
+            try:
+                response = await route.fetch()  # performs the request
+                overridden_headers = {
+                    **response.headers,
+                    "content-disposition": 'attachment'
+                }
+                self.logger.info('Got a PDF in headless chromium, force download')
+                await route.fulfill(response=response, headers=overridden_headers)
+            except Error as e:
+                self.logger.info(f'Unable to force download: {e}')
+                await route.continue_()
+
+        np_retry = 3
+        while np_retry > 0:
+            try:
+                page = await self.context.new_page()
+                break
+            except Error as e:
+                self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
+                np_retry -= 1
+                if np_retry <= 0:
+                    self.should_retry = True
+                    raise PlaywrightCaptureException(f'Unable to create new page: {e}')
+                else:
+                    await asyncio.sleep(1)
+
+        if self.browser_name == 'chromium' and self.headless:
+            # overwrite in chromium in headless mode, to trigger a download
+            # otherwise it is rendered in the PDF viewer.
+            try:
+                await page.route("**/*.pdf", handler=_override_content_disposition_handler)
+            except Error as e:
+                self.logger.warning(f'Failed at fetching PDF in headless chromium: {e}')
+
+        if allow_tracking:
+            # Add authorization clickthroughs
+            await self.__dialog_didomi_clickthrough(page)
+            await self.__dialog_onetrust_clickthrough(page)
+            await self.__dialog_hubspot_clickthrough(page)
+            await self.__dialog_cookiebot_clickthrough(page)
+            await self.__dialog_complianz_clickthrough(page)
+            await self.__dialog_yahoo_clickthrough(page)
+            await self.__dialog_ppms_clickthrough(page)
+            await self.__dialog_alert_dialog_clickthrough(page)
+            await self.__dialog_clickthrough(page)
+            await self.__dialog_tarteaucitron_clickthrough(page)
+
+        page.set_default_timeout((self._capture_timeout - 2) * 1000)
+        # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
+        self._store_request = store_request
+
+        page.on("requestfinished", store_request)
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.on("download", handle_download)
+        return page
+
+    def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
+        splitted = urlsplit(proxy)
+        if splitted.username and splitted.password:
+            return {'username': splitted.username, 'password': splitted.password,
+                    'server': urlunsplit((splitted.scheme, f'{splitted.hostname}:{splitted.port}', splitted.path, splitted.query, splitted.fragment))}
+        return {'server': proxy}
+
+    @property
+    def proxy(self) -> ProxySettings:
+        return self._proxy
+
+    @proxy.setter
+    def proxy(self, proxy: str | dict[str, str] | None) -> None:
+        if proxy:
+            if isinstance(proxy, str):
+                self._proxy = self.__prepare_proxy_playwright(proxy)
+            elif isinstance(proxy, dict):
+                self._proxy = {'server': proxy['server'],
+                               'bypass': proxy.get('bypass', ''),
+                               'username': proxy.get('username', ''),
+                               'password': proxy.get('password', '')}
+            else:
+                raise InvalidPlaywrightParameter(f'Invalid proxy parameter: "{proxy}" ({type(proxy)})')
+
+    @property
+    def capture_timeout(self) -> int:
+        return self._capture_timeout
+
+    @capture_timeout.setter
+    def capture_timeout(self, timeout: int | None) -> None:
+        if not timeout:
+            self._capture_timeout = self._minimal_timeout
+        else:
+            if timeout < self._minimal_timeout:
+                self.logger.warning(f'Timeout given: {timeout}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
+                self._capture_timeout = self._minimal_timeout
+            else:
+                self._capture_timeout = timeout
 
     @property
     def locale(self) -> str:
@@ -347,23 +517,21 @@ class Capture():
     @cookies.setter
     def cookies(self, cookies: list[Cookie | dict[str, Any]] | None) -> None:
         '''Cookies to send along to the initial request.
+
         :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
         '''
         if not cookies:
             return
-        for cookie in cookies:
-            if not cookie:
+        for raw_cookie in cookies:
+            if not raw_cookie:
                 continue
-            if isinstance(cookie, Cookie):
-                self._cookies.append(cookie)
-            elif isinstance(cookie, dict):
-                try:
-                    self._cookies.append(Cookie.model_validate(cookie))
-                except Exception as e:
-                    self.logger.warning(f'Invalid cookie: {e}')
-            else:
-                # None, ignore
-                pass
+            if isinstance(raw_cookie, Cookie):
+                self._cookies.append(raw_cookie)
+                continue
+            try:
+                self._cookies.append(Cookie.model_validate(raw_cookie))
+            except Exception as e:
+                self.logger.warning(f'Invalid cookie: {e}')
 
     @property
     def storage(self) -> StorageState:
@@ -466,6 +634,17 @@ class Capture():
             ua = self.user_agent
             vp = self.viewport
 
+        # NOTE 2026-04-10: Very specific edge case:
+        # * capture in interactive mode with xpra
+        # * the browser is webkit
+        # => setting a viewport fails with (possibly related to x11?):
+        # BrowserContext.new_page: Protocol error (Emulation.setDeviceMetricsOverride): Failed to resize window
+        # fun thing is that is seems to be working as expected with
+        # self._env.update({'DEBUG': 'pw:protocol'})
+        # Playwright bug: https://github.com/microsoft/playwright/issues/40149
+        # So skip the viewport for now, it's not a very big deal.
+        if self.interactive and self.browser_name == 'webkit':
+            vp = None
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
@@ -967,6 +1146,182 @@ class Capture():
         await self._safe_wait(page)
         self.logger.debug('Done with waiting.')
 
+    async def _finalize_capture(
+        self,
+        *,
+        page: Page,
+        to_return: CaptureResponse,
+        errors: list[str],
+        with_trusted_timestamps: bool,
+    ) -> None:
+        """Common finalization logic for captures (downloads, cookies, storage, HAR, socks5, timestamps)."""
+
+        self.logger.debug('Finishing up capture (helper).')
+
+        # We may have multiple downloads triggered via JS; if so, deduplicate them and,
+        # when there is more than one, bundle them into a zip stored in-memory.
+        # This mirrors the behavior previously implemented at the end of capture_page.
+        if self._multiple_downloads:
+            if multiple_dls := set(self._multiple_downloads):
+                if len(multiple_dls) == 1:
+                    dl = multiple_dls.pop()
+                    to_return["downloaded_filename"] = dl[0]
+                    to_return["downloaded_file"] = dl[1]
+                else:
+                    mem_zip = BytesIO()
+                    to_return["downloaded_filename"] = f'{self.uuid}_multiple_downloads.zip'
+                    with ZipFile(mem_zip, 'w') as z:
+                        for i, f_details in enumerate(multiple_dls):
+                            filename, file_content = f_details
+                            z.writestr(f'{i}_{filename}', file_content)
+                    to_return["downloaded_file"] = mem_zip.getvalue()
+
+        # Collect cookies from the context (may time out or fail depending on page state).
+        try:
+            async with timeout(15):
+                # The response must contain jsonable elements, use the model to normalize.
+                to_return['cookies'] = [Cookie.model_validate(c).model_dump(exclude_none=True) for c in await self.context.cookies()]
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.warning("Unable to get cookies (timeout).")
+            errors.append("Unable to get the cookies (timeout).")
+            self.should_retry = True
+        except Error as e:
+            self.logger.warning(f"Unable to get cookies: {e}")
+            errors.append(f'Unable to get the cookies: {e}')
+            self.should_retry = True
+
+        # Collect storage state, including IndexedDB, to capture the full browser state.
+        try:
+            async with timeout(15):
+                to_return['storage'] = await self.context.storage_state(indexed_db=True)
+        except (TimeoutError, asyncio.TimeoutError):
+            self.logger.warning("Unable to get storage (timeout).")
+            errors.append("Unable to get the storage (timeout).")
+            self.should_retry = True
+        except Error as e:
+            self.logger.warning(f"Unable to get the storage: {e}")
+            errors.append(f'Unable to get the storage: {e}')
+            self.should_retry = True
+
+        try:
+            if not page.is_closed():
+                # Remove request listener if we set one; best-effort only as it is
+                # primarily used for favicon extraction and should not break captures.
+                if self._store_request is not None:
+                    try:
+                        page.remove_listener("requestfinished", self._store_request)
+                    except Exception:
+                        # Best-effort only
+                        pass
+
+                try:
+                    # Give in-flight operations a short grace period, then switch the
+                    # context offline to stop further network activity before closing.
+                    await asyncio.sleep(1)
+                    async with timeout(3):
+                        await self.context.set_offline(True)
+                        self.logger.debug('Page offline.')
+                except (TimeoutError, asyncio.TimeoutError):
+                    self.logger.debug("Unable switch offline.")
+
+                try:
+                    # Finally close the page itself; failures here are non-fatal but
+                    # are logged to help debug flaky environments.
+                    async with timeout(5):
+                        await page.close(reason="Closing the page because the capture finished.")
+                        self.logger.debug('Page closed.')
+                except (TimeoutError, asyncio.TimeoutError):
+                    self.logger.warning("Unable close page.")
+
+            # Close the context to flush the HAR file to disk, then load it.
+            async with timeout(30):
+                await self.context.close(reason="Closing the context because the capture finished.")  # context needs to be closed to generate the HAR
+                self.logger.debug('Context closed.')
+                with open(self._temp_harfile.name, 'rb') as _har:
+                    to_return['har'] = orjson.loads(_har.read())
+                self.logger.debug('Got HAR.')
+
+            # When using a socks5 proxy, post-process the HAR to resolve IPs via
+            # the proxy so the stored HAR contains addresses consistent with what
+            # the proxy saw.
+            if (to_return.get('har') and self.proxy and self.proxy.get('server')
+                    and self.proxy['server'].startswith('socks5')):
+                if har := to_return['har']:  # Could be None
+                    try:
+                        async with timeout(120):
+                            await self.socks5_resolver(har)
+                    except (TimeoutError, asyncio.TimeoutError):
+                        self.logger.warning("Unable to resolve all the IPs via the socks5 proxy.")
+                        errors.append("Unable to resolve all the IPs via the socks5 proxy.")
+                        self.should_retry = True
+
+        except (TimeoutError, asyncio.TimeoutError):
+            # If closing the context or generating the HAR takes too long, the
+            # capture is considered incomplete but we still return what we have.
+            self.logger.warning("Unable to close context at the end of the capture.")
+            errors.append("Unable to close context at the end of the capture.")
+            self.should_retry = True
+        except Exception as e:
+            # Any other unexpected failure while finalizing the capture is logged
+            # and surfaced as a generic HAR-generation error.
+            self.logger.warning(f"Other exception while finishing up the capture: {e}.")
+            errors.append(f'Unable to generate HAR file: {e}')
+
+        if errors:
+            to_return['error'] = '\n'.join(errors)
+        if with_trusted_timestamps:
+            try:
+                await self._get_trusted_timestamps(to_return)
+            except Exception as e:
+                self.logger.warning(f'Unable to get trusted timestamps: {e}')
+
+    async def open_page(self, page: Page, url: str, errors: list[str], referer: str | None=None) -> None:
+        try:
+            await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
+            try:
+                await page.bring_to_front()
+                self.logger.debug('Page moved to front.')
+            except Error as e:
+                self.logger.warning(f'Unable to bring the page to the front: {e}.')
+
+        except Error as initial_error:
+            self._update_exceptions(initial_error)
+            # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
+            if initial_error.name in ['Download is starting', 'net::ERR_ABORTED']:
+                # page.goto failed, but it triggered a download event.
+                # Let's re-trigger it.
+                try:
+                    async with page.expect_download() as download_info:
+                        try:
+                            await page.goto(url, referer=referer if referer else '')
+                        except Exception:
+                            pass
+                        with NamedTemporaryFile() as tmp_f:
+                            download = await download_info.value
+                            await download.save_as(tmp_f.name)
+                            filename = download.suggested_filename
+                            with open(tmp_f.name, "rb") as f:
+                                file_content = f.read()
+                            self._multiple_downloads.append((filename, file_content))
+                except PlaywrightTimeoutError:
+                    self.logger.debug('No download has been triggered.')
+                    raise initial_error
+                except Error as e:
+                    try:
+                        error_msg = download.failure()
+                        if not error_msg:
+                            raise e
+                        errors.append(f"Error while downloading: {error_msg}")
+                        self.logger.info(f'Error while downloading: {error_msg}')
+                        self.should_retry = True
+                    except Exception:
+                        raise e
+            else:
+                raise initial_error
+        else:
+            await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
+
+    @overload
     async def capture_page(self, url: str, *, max_depth_capture_time: int,
                            referer: str | None=None,
                            page: Page | None=None, depth: int=0,
@@ -975,160 +1330,70 @@ class Capture():
                            with_favicon: bool=False,
                            allow_tracking: bool=False,
                            with_trusted_timestamps: bool=False,
+                           current_page_only: bool=False,
                            final_wait: int=5
                            ) -> CaptureResponse:
+        ...
+
+    @overload
+    async def capture_page(self, url: None=None, *, max_depth_capture_time: int,
+                           referer: str | None=None,
+                           page: Page, depth: int=0,
+                           rendered_hostname_only: bool=True,
+                           with_screenshot: bool=True,
+                           with_favicon: bool=False,
+                           allow_tracking: bool=False,
+                           with_trusted_timestamps: bool=False,
+                           current_page_only: bool=False,
+                           final_wait: int=5
+                           ) -> CaptureResponse:
+        ...
+
+    async def capture_page(self, url: str | None=None, *, max_depth_capture_time: int,
+                           referer: str | None=None,
+                           page: Page | None=None, depth: int=0,
+                           rendered_hostname_only: bool=True,
+                           with_screenshot: bool=True,
+                           with_favicon: bool=False,
+                           allow_tracking: bool=False,
+                           with_trusted_timestamps: bool=False,
+                           current_page_only: bool=False,
+                           final_wait: int=5,
+                           capture_settings: CaptureSettings | None=None
+                           ) -> CaptureResponse:
+        """Capture a URL and optionally recurse into child links.
+
+        When `page` is not provided, this method creates and prepares a new page,
+        performs the navigation, and finalizes the capture before returning.
+        Recursive child captures reuse the existing page and therefore skip the
+        outer setup/finalization path.
+
+        When `current_page_only` is True the method snapshots the page as-is
+        (no navigation, no recursion) and then finalizes.  This is the path
+        used by interactive captures after setup_page_capture has already been
+        called by the caller.
+        """
 
         to_return: CaptureResponse = {}
         errors: list[str] = []
-        got_favicons = False
+        capturing_sub = False
 
-        # We don't need to be super strict on the lock, as it simply triggers a wait for network idle before stoping the capture
-        # but we still need it to be an integer in case we have more than one download triggered and one finished when the others haven't
-        self.wait_for_download = 0
-
-        # We may have multiple download triggered via JS
-        multiple_downloads: list[tuple[str, bytes]] = []
-
-        async def handle_download(download: Download) -> None:
-            # This method is called when a download event is triggered from JS in a page that also renders
-            try:
-                self.wait_for_download += 1
-                with NamedTemporaryFile() as tmp_f:
-                    self.logger.info('Got a download triggered from JS.')
-                    await download.save_as(tmp_f.name)
-                    filename = download.suggested_filename
-                    with open(tmp_f.name, "rb") as f:
-                        file_content = f.read()
-                    multiple_downloads.append((filename, file_content))
-                    self.logger.info('Done with download.')
-            except Exception as e:
-                if download.page.is_closed():
-                    # Page is closed, skip logging.
-                    pass
-                else:
-                    self.logger.warning(f'Unable to finish download triggered from JS: {e}')
-            finally:
-                self.wait_for_download -= 1
-
-        async def store_request(request: Request) -> None:
-            # This method is called on each request, to store the body (if it is an image) in a dict indexed by URL
-            if got_favicons or request.resource_type != 'image':
-                return
-            try:
-                if response := await request.response():
-                    if got_favicons:
-                        return
-                    if request.resource_type == 'image' and response.ok:
-                        try:
-                            if body := await response.body():
-                                m = self.magicdb.best_magic_buffer(body)
-                                if m.mime_type.startswith('image'):
-                                    self._requests[request.url] = body
-                        except Exception:
-                            pass
-            except Exception as e:
-                self.logger.info(f'Unable to store request: {e}')
-
-        if page is not None:
-            capturing_sub = True
+        if current_page_only and page is None:
+            # No instrumentation.
+            raise InvalidPlaywrightParameter('current_page_only requires an initialized page')
         else:
-            capturing_sub = False
-            try:
-                page = await self.context.new_page()
-
-                if self.browser_name == 'chromium' and self.headless:
-                    async def _override_content_disposition_handler(route: Route, request: Request) -> None:
-                        """Special case to handle PDF rendered in the browser directly"""
-                        try:
-                            response = await route.fetch()  # performs the request
-                            overridden_headers = {
-                                **response.headers,
-                                "content-disposition": 'attachment'
-                            }
-                            self.logger.info('Got a PDF in headless chromium, force download')
-                            await route.fulfill(response=response, headers=overridden_headers)
-                        except Error as e:
-                            self.logger.info(f'Unable to force download: {e}')
-                            await route.continue_()
-
-                    # overwrite in chromium in headless mode, to trigger a download
-                    # otherwise it is rendered in the PDF viewer.
-                    try:
-                        await page.route("**/*.pdf", handler=_override_content_disposition_handler)
-                    except Error as e:
-                        self.logger.warning(f'Failed at fetching PDF in headless chromium: {e}')
-
-                # client = await page.context.new_cdp_session(page)
-                # await client.detach()
-            except Error as e:
-                self.logger.warning(f'Unable to create new page, the context is in a broken state: {e}')
-                self.should_retry = True
-                to_return['error'] = f'Unable to create new page: {e}'
-                return to_return
-
-            if allow_tracking:
-                # Add authorization clickthroughs
-                await self.__dialog_didomi_clickthrough(page)
-                await self.__dialog_onetrust_clickthrough(page)
-                await self.__dialog_hubspot_clickthrough(page)
-                await self.__dialog_cookiebot_clickthrough(page)
-                await self.__dialog_complianz_clickthrough(page)
-                await self.__dialog_yahoo_clickthrough(page)
-                await self.__dialog_ppms_clickthrough(page)
-                await self.__dialog_alert_dialog_clickthrough(page)
-                await self.__dialog_clickthrough(page)
-                await self.__dialog_tarteaucitron_clickthrough(page)
-
-            page.set_default_timeout((self._capture_timeout - 2) * 1000)
-            # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
-            page.on("requestfinished", store_request)
-            page.on("dialog", lambda dialog: dialog.accept())
+            if not url:
+                raise InvalidPlaywrightParameter('The URL to capture is missing.')
+            if page is None:
+                page = await self.setup_page_capture(allow_tracking=allow_tracking)
+            else:
+                # Automated capture with depth > 0
+                capturing_sub = True
 
         try:
-            try:
-                page.on("download", handle_download)
-                await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
-            except Error as initial_error:
-                self._update_exceptions(initial_error)
-                # So this one is really annoying: chromium raises a net::ERR_ABORTED when it hits a download
-                if initial_error.name in ['Download is starting', 'net::ERR_ABORTED']:
-                    # page.goto failed, but it triggered a download event.
-                    # Let's re-trigger it.
-                    try:
-                        async with page.expect_download() as download_info:
-                            try:
-                                await page.goto(url, referer=referer if referer else '')
-                            except Exception:
-                                pass
-                            with NamedTemporaryFile() as tmp_f:
-                                download = await download_info.value
-                                await download.save_as(tmp_f.name)
-                                filename = download.suggested_filename
-                                with open(tmp_f.name, "rb") as f:
-                                    file_content = f.read()
-                                multiple_downloads.append((filename, file_content))
-                    except PlaywrightTimeoutError:
-                        self.logger.debug('No download has been triggered.')
-                        raise initial_error
-                    except Error as e:
-                        try:
-                            error_msg = download.failure()
-                            if not error_msg:
-                                raise e
-                            errors.append(f"Error while downloading: {error_msg}")
-                            self.logger.info(f'Error while downloading: {error_msg}')
-                            self.should_retry = True
-                        except Exception:
-                            raise e
-                else:
-                    raise initial_error
-            else:
-                await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
-                try:
-                    await page.bring_to_front()
-                    self.logger.debug('Page moved to front.')
-                except Error as e:
-                    self.logger.warning(f'Unable to bring the page to the front: {e}.')
+            if not current_page_only:
+                # Standard navigation + capture path.
+                await self.open_page(page, url, errors, referer)
 
                 try:
                     if self.headless:
@@ -1139,114 +1404,117 @@ class Capture():
                 except Exception as e:
                     self.logger.exception(f'Error during instrumentation: {e}')
 
-                # ### --------------------------------------
-                # NOTE 2025-11-12: disabling the offline setting as it doesn't seem
-                # to solve the issue with the frames, but causes some failure
-                # while getting the stored state
+            # ### --------------------------------------
+            # NOTE 2025-11-12: disabling the offline setting as it doesn't seem
+            # to solve the issue with the frames, but causes some failure
+            # while getting the stored state
 
-                # Pass browser to offline mode to get content and make screenshot
-                # await self.context.set_offline(True)
-                # await self._safe_wait(page, 5)
-                # self.logger.info('Browser offline.')
-                # Abort everything
-                # await page.route("**/*", lambda route: route.abort())
-                # await self._safe_wait(page, 5)
+            # Pass browser to offline mode to get content and make screenshot
+            # await self.context.set_offline(True)
+            # await self._safe_wait(page, 5)
+            # self.logger.info('Browser offline.')
+            # Abort everything
+            # await page.route("**/*", lambda route: route.abort())
+            # await self._safe_wait(page, 5)
 
-                to_return['frames'] = await self.make_frame_tree(page.main_frame)
+            to_return['frames'] = await self.make_frame_tree(page.main_frame)
 
-                # ### --------------------------------------
+            # ### --------------------------------------
 
-                # The first content is what we call rendered HTML, keep it as-is
-                if frames := to_return.get('frames'):
-                    if content := frames.get('content'):
-                        to_return['html'] = content
-                    if u := frames.get('url'):
-                        if not u:
-                            self.logger.error('Unable to get the URL of the main frame.')
-                            u = '/!\\ Unknown /!\\'
-                        to_return['last_redirected_url'] = u
+            # The first content is what we call rendered HTML, keep it as-is
+            if frames := to_return.get('frames'):
+                if content := frames.get('content'):
+                    to_return['html'] = content
+                if u := frames.get('url'):
+                    if not u:
+                        self.logger.error('Unable to get the URL of the main frame.')
+                        u = '/!\\ Unknown /!\\'
+                    to_return['last_redirected_url'] = u
 
-                if 'html' in to_return and to_return['html'] is not None and with_favicon:
-                    # We're probably (?) safe only looking for favicons in the main frame.
-                    # TODO: check that?
-                    try:
-                        to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
-                        got_favicons = True
-                    except (TimeoutError, asyncio.TimeoutError) as e:
-                        self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
-                    except Exception as e:
-                        self.logger.warning(f'Unable to get favicons: {e}')
+            if 'html' in to_return and to_return['html'] is not None and with_favicon:
+                # We're probably (?) safe only looking for favicons in the main frame.
+                # TODO: check that?
+                try:
+                    to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
+                    self.got_favicons = True
+                except (TimeoutError, asyncio.TimeoutError) as e:
+                    self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
+                except Exception as e:
+                    self.logger.warning(f'Unable to get favicons: {e}')
 
-                if with_screenshot:
-                    to_return['png'] = await self._failsafe_get_screenshot(page)
+            if with_screenshot:
+                to_return['png'] = await self._failsafe_get_screenshot(page)
 
-                # Keep that all the way down there in case the capture failed.
-                self._already_captured.add(url)
+            # Keep that all the way down there in case the capture failed.
+            if captured_url := to_return.get('last_redirected_url'):
+                self._already_captured.add(captured_url)
+            else:
+                self._already_captured.add(page.url)
 
-                if depth > 0 and to_return.get('html') and to_return['html']:
-                    # TODO with children frames:
-                    # 1. if the frame hasa URL, use that as base URL/referer for the subsequent captures
-                    # 2. if it doesn't, the base URL is the url of the parent (which may or may not be the main frame)
-                    if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
-                        to_return['children'] = []
-                        depth -= 1
-                        total_urls = len(child_urls)
-                        max_capture_time = max(int(max_depth_capture_time / total_urls), self._minimal_timeout)
-                        max_captures = int(max_depth_capture_time / max_capture_time)
-                        if max_captures < total_urls:
-                            self.logger.warning(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Only capturing the first {max_captures} URLs in the page.')
-                            if max_captures <= 0:
-                                # We don't really have time for even one capture, but let's try anyway.
-                                child_urls = child_urls[:1]
-                            else:
-                                child_urls = child_urls[:max_captures]
-                        self.logger.info(f'Capturing children, {max_captures} URLs')
-                        consecutive_errors = 0
-                        for index, url in enumerate(child_urls):
-                            self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
-                            start_time = time.time()
-                            if page.is_closed():
-                                self.logger.info('Page is closed, unable to capture children.')
-                                break
-                            try:
-                                async with timeout(max_capture_time + 1):  # just adding a bit of padding so playwright has the chance to raise the exception first
-                                    child_capture = await self.capture_page(
-                                        url=url, referer=page.url,
-                                        page=page, depth=depth,
-                                        rendered_hostname_only=rendered_hostname_only,
-                                        max_depth_capture_time=max_capture_time,
-                                        with_screenshot=with_screenshot,
-                                        final_wait=final_wait)
-                                    if with_trusted_timestamps:
-                                        try:
-                                            await self._get_trusted_timestamps(child_capture)
-                                        except Exception as e:
-                                            self.logger.warning(f'Unable to get the trusted timestamps for the clild capture : {e}.')
-                                    to_return['children'].append(child_capture)  # type: ignore[union-attr]
-                            except (TimeoutError, asyncio.TimeoutError):
-                                self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
-                                consecutive_errors += 1
-                            except Exception as e:
-                                self.logger.warning(f'Error while capturing child "{url}": {e}. {len(child_urls) - index - 1} more to go.')
-                                consecutive_errors += 1
-                            else:
-                                consecutive_errors = 0
-                                runtime = int(time.time() - start_time)
-                                self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {len(child_urls) - index - 1} to go.')
+            if depth > 0 and to_return.get('html') and to_return['html']:
+                # TODO with children frames:
+                # 1. if the frame has a URL, use that as base URL/referer for the subsequent captures
+                # 2. if it doesn't, the base URL is the url of the parent (which may or may not be the main frame)
+                if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
+                    to_return['children'] = []
+                    depth -= 1
+                    total_urls = len(child_urls)
+                    max_capture_time = max(int(max_depth_capture_time / total_urls), self._minimal_timeout)
+                    max_captures = int(max_depth_capture_time / max_capture_time)
+                    if max_captures < total_urls:
+                        self.logger.warning(f'Attempting to capture URLs from {page.url} but there are too many ({total_urls}) to capture in too little time. Only capturing the first {max_captures} URLs in the page.')
+                        if max_captures <= 0:
+                            # We don't really have time for even one capture, but let's try anyway.
+                            child_urls = child_urls[:1]
+                        else:
+                            child_urls = child_urls[:max_captures]
+                    self.logger.info(f'Capturing children, {max_captures} URLs')
+                    consecutive_errors = 0
+                    for index, url in enumerate(child_urls):
+                        self.logger.info(f'Capture child {url} - Timeout: {max_capture_time}s')
+                        start_time = time.time()
+                        if page.is_closed():
+                            self.logger.info('Page is closed, unable to capture children.')
+                            break
+                        try:
+                            async with timeout(max_capture_time + 1):  # just adding a bit of padding so playwright has the chance to raise the exception first
+                                child_capture = await self.capture_page(
+                                    url=url, referer=page.url,
+                                    page=page, depth=depth,
+                                    rendered_hostname_only=rendered_hostname_only,
+                                    max_depth_capture_time=max_capture_time,
+                                    with_screenshot=with_screenshot,
+                                    final_wait=final_wait)
+                                if with_trusted_timestamps:
+                                    try:
+                                        await self._get_trusted_timestamps(child_capture)
+                                    except Exception as e:
+                                        self.logger.warning(f'Unable to get the trusted timestamps for the clild capture : {e}.')
+                                to_return['children'].append(child_capture)  # type: ignore[union-attr]
+                        except (TimeoutError, asyncio.TimeoutError):
+                            self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
+                            consecutive_errors += 1
+                        except Exception as e:
+                            self.logger.warning(f'Error while capturing child "{url}": {e}. {len(child_urls) - index - 1} more to go.')
+                            consecutive_errors += 1
+                        else:
+                            consecutive_errors = 0
+                            runtime = int(time.time() - start_time)
+                            self.logger.info(f'Successfully captured child URL: {url} in {runtime}s. {len(child_urls) - index - 1} to go.')
 
-                            if consecutive_errors >= 5:
-                                # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
-                                self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
-                                errors.append("Got more than 5 consecutive errors while capturing children")
-                                self.should_retry = True
-                                break
+                        if consecutive_errors >= 5:
+                            # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
+                            self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
+                            errors.append("Got more than 5 consecutive errors while capturing children")
+                            self.should_retry = True
+                            break
 
-                            try:
-                                await page.go_back()
-                            except PlaywrightTimeoutError:
-                                self.logger.info('Go back timed out, it is probably not a big deal.')
-                            except Exception as e:
-                                self.logger.info(f'Unable to go back: {e}.')
+                        try:
+                            await page.go_back()
+                        except PlaywrightTimeoutError:
+                            self.logger.info('Go back timed out, it is probably not a big deal.')
+                        except Exception as e:
+                            self.logger.info(f'Unable to go back: {e}.')
 
         except PlaywrightTimeoutError as e:
             errors.append(f"The capture took too long - {e.message}")
@@ -1263,7 +1531,6 @@ class Capture():
             self._update_exceptions(e)
             errors.append(e.message)
             to_return['error_name'] = e.name
-            # TODO: check e.message and figure out if it is worth retrying or not.
             # NOTE: e.name is generally (always?) "Error"
             if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
                 self.logger.info(f'Unable to process {url}: {e.name}')
@@ -1275,6 +1542,11 @@ class Capture():
             else:
                 # Unexpected ones
                 self.logger.exception(f'Something went poorly with {url}: "{e.name}" - {e.message}')
+        except PlaywrightCaptureException as e:
+            # unrecoverable exeptions
+            self.logger.warning(f'Unable to run capture: {e}')
+            errors.append(f'Unable to run capture: {e}')
+            raise e
         except Exception as e:
             # we may get a non-playwright exception to.
             # The ones we try to handle here should be treated as if they were.
@@ -1286,101 +1558,16 @@ class Capture():
             else:
                 raise e
         finally:
-            self.logger.debug('Finishing up capture.')
-            if not capturing_sub:
-                # Deduplicate list
-                if multiple_dls := set(multiple_downloads):
-                    if len(multiple_dls) == 1:
-                        dl = multiple_dls.pop()
-                        to_return["downloaded_filename"] = dl[0]
-                        to_return["downloaded_file"] = dl[1]
-                    else:
-                        # we have multiple downloads, making it a zip, make sure the filename is unique
-                        mem_zip = BytesIO()
-                        to_return["downloaded_filename"] = f'{self.uuid}_multiple_downloads.zip'
-                        with ZipFile(mem_zip, 'w') as z:
-                            for i, f_details in enumerate(multiple_dls):
-                                filename, file_content = f_details
-                                z.writestr(f'{i}_{filename}', file_content)
-                        to_return["downloaded_file"] = mem_zip.getvalue()
-
-                try:
-                    async with timeout(15):
-                        # NOTE: Ignore type until we can use python 3.12 + only
-                        # playwrightcapture.capture.SetCookieParam == playwright._impl._api_structures.SetCookieParam
-                        to_return['cookies'] = await self.context.cookies()  # type: ignore[typeddict-item]
-                except (TimeoutError, asyncio.TimeoutError):
-                    self.logger.warning("Unable to get cookies (timeout).")
-                    errors.append("Unable to get the cookies (timeout).")
-                    self.should_retry = True
-                except Error as e:
-                    self.logger.warning(f"Unable to get cookies: {e}")
-                    errors.append(f'Unable to get the cookies: {e}')
-                    self.should_retry = True
-
-                try:
-                    async with timeout(15):
-                        to_return['storage'] = await self.context.storage_state(indexed_db=True)
-                except (TimeoutError, asyncio.TimeoutError):
-                    self.logger.warning("Unable to get storage (timeout).")
-                    errors.append("Unable to get the storage (timeout).")
-                    self.should_retry = True
-                except Error as e:
-                    self.logger.warning(f"Unable to get the storage: {e}")
-                    errors.append(f'Unable to get the storage: {e}')
-                    self.should_retry = True
-                try:
-                    if not page.is_closed():
-                        try:
-                            page.remove_listener("requestfinished", store_request)
-                            await asyncio.sleep(1)
-                            async with timeout(3):
-                                await self.context.set_offline(True)
-                                self.logger.debug('Page offline.')
-                        except (TimeoutError, asyncio.TimeoutError):
-                            self.logger.debug("Unable switch offline.")
-
-                        try:
-                            async with timeout(5):
-                                await page.close(reason="Closing the page because the capture finished.")
-                                self.logger.debug('Page closed.')
-                        except (TimeoutError, asyncio.TimeoutError):
-                            self.logger.warning("Unable close page.")
-
-                    async with timeout(30):
-                        await self.context.close(reason="Closing the context because the capture finished.")  # context needs to be closed to generate the HAR
-                        self.logger.debug('Context closed.')
-                        with open(self._temp_harfile.name, 'rb') as _har:
-                            to_return['har'] = orjson.loads(_har.read())
-                        self.logger.debug('Got HAR.')
-
-                    if (to_return.get('har') and self.proxy and self.proxy.get('server')
-                            and self.proxy['server'].startswith('socks5')):
-                        # Only if the capture was not done via a socks5 proxy
-                        if har := to_return['har']:  # Could be None
-                            try:
-                                async with timeout(120):
-                                    await self.socks5_resolver(har)
-                            except (TimeoutError, asyncio.TimeoutError):
-                                self.logger.warning("Unable to resolve all the IPs via the socks5 proxy.")
-                                errors.append("Unable to resolve all the IPs via the socks5 proxy.")
-                                self.should_retry = True
-
-                except (TimeoutError, asyncio.TimeoutError):
-                    self.logger.warning("Unable to close context at the end of the capture.")
-                    errors.append("Unable to close context at the end of the capture.")
-                    self.should_retry = True
-                except Exception as e:
-                    self.logger.warning(f"Other exception while finishing up the capture: {e}.")
-                    errors.append(f'Unable to generate HAR file: {e}')
+            # If page is None there, the capture failed badly, and there is nothing to do
+            # the error message will be in the errors key.
+            if not capturing_sub and page:
+                await self._finalize_capture(
+                    page=page,
+                    to_return=to_return,
+                    errors=errors,
+                    with_trusted_timestamps=with_trusted_timestamps,
+                )
         self.logger.debug('Capture done')
-        if errors:
-            to_return['error'] = '\n'.join(errors)
-        if with_trusted_timestamps:
-            try:
-                await self._get_trusted_timestamps(to_return)
-            except Exception as e:
-                self.logger.warning(f'Unable to get trusted timestamps: {e}')
         return to_return
 
     async def _get_trusted_timestamps(self, capture_response: CaptureResponse) -> None:
@@ -1842,8 +2029,6 @@ class Capture():
             to_return['children'] = await asyncio.gather(*[self.make_frame_tree(child) for child in frame.child_frames])
         return to_return
 
-    # #### Manual favicon extractor, will be removed if/when Playwright supports getting the favicon.
-
     # Method copied from HAR2Tree
     def __parse_data_uri(self, uri: str) -> tuple[str, str, bytes] | None:
         if not uri.startswith('data:'):
@@ -1893,6 +2078,7 @@ class Capture():
             mimeparams = ''
         return mime, mimeparams, data
 
+    # #### Manual favicon extractor, will be removed if/when Playwright supports getting the favicon.
     def __extract_favicons(self, rendered_content: str | bytes) -> tuple[set[str], set[bytes]] | None:
         if isinstance(rendered_content, bytes):
             rendered_content = str(from_bytes(rendered_content).best())
