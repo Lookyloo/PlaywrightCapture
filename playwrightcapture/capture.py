@@ -1359,7 +1359,6 @@ class Capture():
                            with_trusted_timestamps: bool=False,
                            current_page_only: bool=False,
                            final_wait: int=5,
-                           capture_settings: CaptureSettings | None=None
                            ) -> CaptureResponse:
         """Capture a URL and optionally recurse into child links.
 
@@ -1378,12 +1377,11 @@ class Capture():
         errors: list[str] = []
         capturing_sub = False
 
-        if current_page_only and page is None:
+        if current_page_only:
             # No instrumentation.
-            raise InvalidPlaywrightParameter('current_page_only requires an initialized page')
+            if page is None:
+                raise InvalidPlaywrightParameter('current_page_only requires an initialized page')
         else:
-            if not url:
-                raise InvalidPlaywrightParameter('The URL to capture is missing.')
             if page is None:
                 page = await self.setup_page_capture(allow_tracking=allow_tracking)
             else:
@@ -1393,6 +1391,8 @@ class Capture():
         try:
             if not current_page_only:
                 # Standard navigation + capture path.
+                if not url:
+                    raise InvalidPlaywrightParameter('The URL to capture is missing.')
                 await self.open_page(page, url, errors, referer)
 
                 try:
