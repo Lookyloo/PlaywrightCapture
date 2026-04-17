@@ -167,7 +167,7 @@ class Capture():
         :param uuid: The UUID of the capture.
         :param capture_settings: All the settings for the capture
         :param tt_settings: The trusted timestamp settings
-        :param env: Optional env variables passed to the playwright process. For interactive captures, pass the DISPLAY env variable there
+        :param env: Optional env variables passed to the playwright process. For remote headfull captures, pass the DISPLAY env variable there
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
@@ -182,7 +182,9 @@ class Capture():
         self.device_name = capture_settings.device_name
         self.socks5_dns_resolver = capture_settings.socks5_dns_resolver
         self.headless = capture_settings.headless
-        self.interactive = capture_settings.interactive
+        # capture_settings.headless to false opens the browser in the desktop,
+        # capture_settings.remote_headfull will throw the browser in xpra so they're independent.
+        self.remote_headfull = capture_settings.remote_headfull
         self._init_script = capture_settings.init_script
 
         self.headers = capture_settings.headers
@@ -242,12 +244,12 @@ class Capture():
             args = ['--disable-blink-features=AutomationControlled',  # Avoids setting navigator.webdriver to True
                     '--unsafely-treat-insecure-origin-as-secure',  # Allows to run crypto API on .onion URLs (See https://github.com/Lookyloo/PlaywrightCapture/issues/65)
                     ]
-            if self.interactive:
+            if self.remote_headfull:
                 # Force X, required to use xpra and the DISPLAY env variable
                 args.append('--ozone-platform=x11')
 
         launch_env: dict[str, Any] | None = None
-        if self.interactive:
+        if self.remote_headfull:
             # set required env variables to force the browsers to use X11
             if self.browser_name == "firefox":
                 self._env.update({'MOZ_ENABLE_WAYLAND': '0', 'DISABLE_WAYLAND': '1'})
@@ -305,7 +307,7 @@ class Capture():
         This method preserves the existing per-page setup used by capture_page:
         download tracking, request body storage for image responses, dialog
         acceptance, and the PDF download workaround in headless Chromium.
-        Interactive sessions reuse it so the operator-driven session can still
+        Remote headfull sessions reuse it so the operator-driven session can still
         finalize like a normal single-page capture later on.
         """
 
@@ -635,7 +637,7 @@ class Capture():
             vp = self.viewport
 
         # NOTE 2026-04-10: Very specific edge case:
-        # * capture in interactive mode with xpra
+        # * capture in remote headfull mode with xpra
         # * the browser is webkit
         # => setting a viewport fails with (possibly related to x11?):
         # BrowserContext.new_page: Protocol error (Emulation.setDeviceMetricsOverride): Failed to resize window
@@ -643,7 +645,7 @@ class Capture():
         # self._env.update({'DEBUG': 'pw:protocol'})
         # Playwright bug: https://github.com/microsoft/playwright/issues/40149
         # So skip the viewport for now, it's not a very big deal.
-        if self.interactive and self.browser_name == 'webkit':
+        if self.remote_headfull and self.browser_name == 'webkit':
             vp = None
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
@@ -1369,7 +1371,7 @@ class Capture():
 
         When `current_page_only` is True the method snapshots the page as-is
         (no navigation, no recursion) and then finalizes.  This is the path
-        used by interactive captures after setup_page_capture has already been
+        used by remote headfull captures after setup_page_capture has already been
         called by the caller.
         """
 
