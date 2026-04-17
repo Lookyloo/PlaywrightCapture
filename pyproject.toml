@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.39.0"
+version = "1.39.1"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
@@ -51,7 +51,7 @@ recaptcha = [
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20250516"
 pytest = "^9.0.3"
-mypy = "^1.20.0"
+mypy = "^1.20.1"
 types-dateparser = "^1.4.0.20260408"
 types-pytz = "^2026.1.1.20260408"
 
