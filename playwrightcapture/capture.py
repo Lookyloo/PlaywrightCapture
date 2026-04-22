@@ -447,7 +447,7 @@ class Capture():
     @capture_timeout.setter
     def capture_timeout(self, timeout: int | None) -> None:
         if not timeout:
-            self._capture_timeout = self._minimal_timeout
+            self._capture_timeout = self._default_timeout
         else:
             if timeout < self._minimal_timeout:
                 self.logger.warning(f'Timeout given: {timeout}s. Ignoring that as it makes little sense to attempt to capture a page in less than {self._minimal_timeout}s.')
