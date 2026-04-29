@@ -6,6 +6,7 @@ import asyncio
 import binascii
 # import hashlib
 import codecs
+import ipaddress
 import logging
 import os
 import random
@@ -34,6 +35,7 @@ from playwright.async_api import async_playwright, Frame, Error, Page, Download,
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS  # type: ignore[attr-defined]
 from pure_magic_rs import MagicDb
+from pyfaup import Url
 from rfc3161_client import TimestampRequestBuilder, TimeStampRequest, HashAlgorithm
 from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
@@ -160,7 +162,8 @@ class Capture():
     def __init__(self, loglevel: str | int='INFO', uuid: str | None=None, *,
                  capture_settings: CaptureSettings,
                  tt_settings: TrustedTimestampSettings | None=None,
-                 env: dict[str, str | float | bool] | None=None):
+                 env: dict[str, str | float | bool] | None=None,
+                 only_global_lookup: bool=True):
         """Captures a page with Playwright.
 
         :param loglevel: Python loglevel
@@ -168,11 +171,13 @@ class Capture():
         :param capture_settings: All the settings for the capture
         :param tt_settings: The trusted timestamp settings
         :param env: Optional env variables passed to the playwright process. For remote headfull captures, pass the DISPLAY env variable there
+        :param only_global_lookup: If true, blocks all non-global lookups (local files, non-public IPs)
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
         self.logger: Logger | PlaywrightCaptureLogAdapter
         self.uuid = uuid
+        self.only_global_lookup = only_global_lookup
         if self.uuid is not None:
             self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': self.uuid})
         else:
@@ -263,6 +268,7 @@ class Capture():
             # add/override env variables
             # NOTE: process.env in the playwright config means os.environ for python
             launch_env = {**os.environ, **self._env}
+
         self.browser = await self.playwright[self.browser_name].launch(
             proxy=self.proxy if self.proxy else None,
             channel="chromium" if self.browser_name == "chromium" else None,
@@ -408,6 +414,8 @@ class Capture():
             await self.__dialog_tarteaucitron_clickthrough(page)
 
         page.set_default_timeout((self._capture_timeout - 2) * 1000)
+        # for the navigation call, force them to be shorter.
+        page.set_default_navigation_timeout((self._capture_timeout / 2) * 1000)
         # trigger a callback on each request to store it in a dict indexed by URL to get it back from the favicon fetcher
         self._store_request = store_request
 
@@ -1278,6 +1286,60 @@ class Capture():
                 self.logger.warning(f'Unable to get trusted timestamps: {e}')
 
     async def open_page(self, page: Page, url: str, errors: list[str], referer: str | None=None) -> None:
+
+        async def catch_file_route(route: Route, request: Request) -> None:
+            if request.url == url:
+                # the path we're trying to capture, it's fine
+                await route.fallback()
+            else:
+                # block everything else
+                self.logger.warning(f"Attempt to open a local file: {request.url}")
+                await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
+
+        async def catch_local_route(route: Route, request: Request) -> None:
+            if request.url == url:
+                # the URL we want to capture, all good
+                await route.fallback()
+            else:
+                # other URLs
+                _url = Url(request.url)
+                if not _url.host:
+                    self.logger.warning(f"Missing Host: {request.url}")
+                    return await route.fallback()
+                try:
+                    ip = ipaddress.ip_address(_url.host.try_into_ip())
+                    if ip.is_global:
+                        return await route.fallback()
+                    # Non-global IP
+                    self.logger.warning(f"Attempt to open a non-public IP: {request.url}")
+                    return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
+                except ValueError:
+                    # not an IP
+                    pass
+
+                try:
+                    hostname = _url.host.try_into_hostname()
+                    if not hostname:
+                        self.logger.warning(f"Missing hostname: {request.url}")
+                        return await route.fallback()
+                    if suffix := hostname.suffix:
+                        if str(suffix) == 'local':
+                            # Got a local domain
+                            self.logger.warning(f"Attempt to open a local domain: {request.url}")
+                            return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
+                    # NOTE: probably can add other things in there, but do not want to trigger a domain resolution.
+                    return await route.fallback()
+                except ValueError:
+                    # not an hostname
+                    pass
+                # should not happen
+                self.logger.warning(f"Opening a weird URL: {request.url}")
+                return await route.fallback()
+
+        if self.only_global_lookup:
+            await page.route("file://**/*", handler=catch_file_route)
+            await page.route("**/*", handler=catch_local_route)
+
         try:
             await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
             try:
