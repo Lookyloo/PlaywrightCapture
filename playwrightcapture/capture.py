@@ -388,7 +388,7 @@ class Capture():
                 np_retry -= 1
                 if np_retry <= 0:
                     self.should_retry = True
-                    raise PlaywrightCaptureException(f'Unable to create new page: {e}')
+                    raise PlaywrightCaptureException(f'Unable to create new page: {e}') from e
                 else:
                     await asyncio.sleep(1)
 
@@ -1290,7 +1290,7 @@ class Capture():
         async def catch_file_route(route: Route, request: Request) -> None:
             if request.url == url:
                 # the path we're trying to capture, it's fine
-                await route.fallback()
+                await route.continue_()
             else:
                 # block everything else
                 self.logger.warning(f"Attempt to open a local file: {request.url}")
@@ -1299,46 +1299,64 @@ class Capture():
         async def catch_local_route(route: Route, request: Request) -> None:
             if request.url == url:
                 # the URL we want to capture, all good
-                await route.fallback()
+                await route.continue_()
             else:
                 # other URLs
-                _url = Url(request.url)
+                try:
+                    _url = Url(request.url)
+                except ValueError as e:
+                    # some URLs will fail here when they have a specific scheme
+                    allowed_schemes = ('chrome-extension:', )
+                    if request.url.startswith(allowed_schemes):
+                        return await route.continue_()
+                    self.logger.warning(f"Unable to parse URL: {request.url}: {e}")
+                    return await route.fulfill(status=404, content_type="text/plain", body=f"Unable to parse URL '{request.url}', blocked.")
+
                 if not _url.host:
                     self.logger.warning(f"Missing Host: {request.url}")
-                    return await route.fallback()
+                    return await route.fulfill(status=404, content_type="text/plain", body=f"Missing host in URL '{request.url}', blocked.")
                 try:
                     ip = ipaddress.ip_address(_url.host.try_into_ip())
                     if ip.is_global:
-                        return await route.fallback()
+                        return await route.continue_()
                     # Non-global IP
                     self.logger.warning(f"Attempt to open a non-public IP: {request.url}")
                     return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
                 except ValueError:
-                    # not an IP
+                    # not an IP, continue to hostname
                     pass
 
                 try:
                     hostname = _url.host.try_into_hostname()
                     if not hostname:
                         self.logger.warning(f"Missing hostname: {request.url}")
-                        return await route.fallback()
-                    if suffix := hostname.suffix:
+                        return await route.fulfill(status=404, content_type="text/plain", body=f"Missing hostname in URL '{request.url}', blocked.")
+                    elif str(hostname) == 'localhost':
+                        self.logger.warning(f"Attempt to open localhost: {request.url}")
+                        return await route.fulfill(status=404, content_type="text/plain", body="Attempted to open localhost, blocked.")
+                    elif suffix := hostname.suffix:
                         if str(suffix) == 'local':
                             # Got a local domain
                             self.logger.warning(f"Attempt to open a local domain: {request.url}")
                             return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
-                    # NOTE: probably can add other things in there, but do not want to trigger a domain resolution.
-                    return await route.fallback()
+                    # NOTE: may want to add other things there, but do not want to trigger a domain resolution.
+                    return await route.continue_()
                 except ValueError:
                     # not an hostname
                     pass
-                # should not happen
+                # should not happen (should have an IP or a hostname
                 self.logger.warning(f"Opening a weird URL: {request.url}")
-                return await route.fallback()
+                return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open a weird URL '{request.url}', blocked.")
 
         if self.only_global_lookup:
-            await page.route("file://**/*", handler=catch_file_route)
-            await page.route("**/*", handler=catch_local_route)
+            # routes are processed in reverse order, the latest one in this list is processed first
+            # See: https://playwright.dev/python/docs/api/class-route#route-fallback
+            await page.route("**/*", handler=catch_local_route)  # last one to be checked
+            # unless they're the actual URL we're rendering, block.
+            await page.route("file:**/*", handler=catch_file_route)
+            # blob URLs, they're always fine as their content is created in memory by the browser
+            # https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Schemes/blob
+            await page.route("blob:**/*", lambda route: route.continue_())
 
         try:
             await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
