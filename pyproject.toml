@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.39.7"
+version = "1.39.8"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
@@ -25,7 +25,7 @@ dependencies = [
     "rfc3161-client (>=1.0.4,<2.0.0)",
     "orjson (>=3.11.4,<4.0.0)",
     "pure-magic-rs (>=0.3.2,<0.4.0)",
-    "lookyloo-models (>=0.2.5)",
+    "lookyloo-models (>=0.2.6)",
     "charset-normalizer (>=3.4.6,<4.0.0)",
     "pyfaup-rs (>=0.4.6,<0.5.0)"
 ]
@@ -54,7 +54,7 @@ types-beautifulsoup4 = "^4.12.0.20250516"
 pytest = "^9.0.3"
 mypy = "^1.20.2"
 types-dateparser = "^1.4.0.20260408"
-types-pytz = "^2026.1.1.20260408"
+types-pytz = "^2026.2.0.20260506"
 
 
 [build-system]
