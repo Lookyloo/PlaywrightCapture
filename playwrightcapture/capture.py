@@ -1288,7 +1288,7 @@ class Capture():
     async def open_page(self, page: Page, url: str, errors: list[str], referer: str | None=None) -> None:
 
         async def catch_file_route(route: Route, request: Request) -> None:
-            if request.url == url:
+            if unquote(request.url) == url:
                 # the path we're trying to capture, it's fine
                 await route.continue_()
             else:
