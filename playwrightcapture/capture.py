@@ -1357,6 +1357,9 @@ class Capture():
             # blob URLs, they're always fine as their content is created in memory by the browser
             # https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Schemes/blob
             await page.route("blob:**/*", lambda route: route.continue_())
+            # filesystem URLs, they point to cache or a virtual file system that is browser managed
+            # https://developer.mozilla.org/en-US/docs/Web/API/File_System_API
+            await page.route("filesystem:**/*", lambda route: route.continue_())
 
         try:
             await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
