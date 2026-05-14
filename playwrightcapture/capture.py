@@ -288,11 +288,14 @@ class Capture():
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         """Close browser resources and suppress exceptions like the upstream context manager."""
 
-        try:
-            await self.browser.close(reason="Closing browser at the end of the capture.")
-        except Exception as e:
-            # We may land in a situation where the capture was forcefully closed and the browser is already closed
-            self.logger.info(f'Unable to close browser: {e}')
+        if self.browser.is_connected():
+            try:
+                await self.browser.close(reason="Closing browser at the end of the capture.")
+            except Exception as e:
+                # We may land in a situation where the capture was forcefully closed and the browser is already closed
+                self.logger.info(f'Unable to close browser: {e}')
+        else:
+            self.logger.info('Browser already disconnected.')
         try:
             await self.playwright.stop()
         except Exception as e:
@@ -1214,7 +1217,9 @@ class Capture():
             self.should_retry = True
 
         try:
-            if not page.is_closed():
+            if page.is_closed():
+                self.logger.info('Page already closed.')
+            else:
                 # Remove request listener if we set one; best-effort only as it is
                 # primarily used for favicon extraction and should not break captures.
                 if self._store_request is not None:
@@ -1244,12 +1249,17 @@ class Capture():
                     self.logger.warning("Unable close page.")
 
             # Close the context to flush the HAR file to disk, then load it.
-            async with timeout(30):
-                await self.context.close(reason="Closing the context because the capture finished.")  # context needs to be closed to generate the HAR
-                self.logger.debug('Context closed.')
-                with open(self._temp_harfile.name, 'rb') as _har:
-                    to_return['har'] = orjson.loads(_har.read())
-                self.logger.debug('Got HAR.')
+            if self.context.is_closed():
+                self.logger.info('Context already closed.')
+            else:
+                async with timeout(30):
+                    # context needs to be closed to generate the HAR
+                    await self.context.close(reason="Closing the context because the capture finished.")
+                    self.logger.debug('Context closed.')
+
+            with open(self._temp_harfile.name, 'rb') as _har:
+                to_return['har'] = orjson.loads(_har.read())
+            self.logger.debug('Got HAR.')
 
             # When using a socks5 proxy, post-process the HAR to resolve IPs via
             # the proxy so the stored HAR contains addresses consistent with what
@@ -1268,9 +1278,11 @@ class Capture():
         except (TimeoutError, asyncio.TimeoutError):
             # If closing the context or generating the HAR takes too long, the
             # capture is considered incomplete but we still return what we have.
-            self.logger.warning("Unable to close context at the end of the capture.")
-            errors.append("Unable to close context at the end of the capture.")
+            self.logger.warning("[Timeout] Unable to close context at the end of the capture.")
+            errors.append("[Timeout] Unable to close context at the end of the capture.")
             self.should_retry = True
+            # In case of timeout, let the exception reach the async calls
+            await asyncio.sleep(1)
         except Exception as e:
             # Any other unexpected failure while finalizing the capture is logged
             # and surfaced as a generic HAR-generation error.
@@ -1782,12 +1794,12 @@ class Capture():
         tries = 3
         while tries > 0:
             try:
-                await page.wait_for_load_state(state="domcontentloaded", timeout=2)
+                await page.wait_for_load_state(state="domcontentloaded", timeout=5)
             except (Error, TimeoutError, asyncio.TimeoutError):
                 self.logger.debug('Frame not loaded yet, cannot get content.')
             else:
                 try:
-                    async with timeout(2):
+                    async with timeout(5):
                         return await page.content()
                 except (Error, TimeoutError, asyncio.TimeoutError):
                     self.logger.debug('Unable to get page content, trying again.')
@@ -1994,6 +2006,7 @@ class Capture():
             'Error receiving data: Connection reset by peer',
             'Internal SOCKSv5 proxy server error.',
             'Host unreachable through SOCKSv5 server.',
+            'Operation was cancelled',
             # JS stuff
             'TurnstileError: [Cloudflare Turnstile] Error: 300030.',
             # The browser barfed
