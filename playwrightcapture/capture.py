@@ -2045,7 +2045,10 @@ class Capture():
         return False
 
     def fatal_browser_error(self, exception: Error) -> bool:
-        if exception.name and any(msg in exception.name for msg in ['Error resolving', 'Could not connect to']):
+        if exception.name and any(msg in exception.name for msg in [
+                'Error resolving',
+                'Could not connect to',
+                'Protocol error (Page.navigate): Cannot navigate to invalid URL']):
             return True
         return False
 
