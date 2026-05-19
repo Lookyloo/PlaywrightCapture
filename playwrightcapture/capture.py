@@ -2007,6 +2007,7 @@ class Capture():
             'Internal SOCKSv5 proxy server error.',
             'Host unreachable through SOCKSv5 server.',
             'Operation was cancelled',
+            'The URL can’t be shown',
             # JS stuff
             'TurnstileError: [Cloudflare Turnstile] Error: 300030.',
             # The browser barfed
