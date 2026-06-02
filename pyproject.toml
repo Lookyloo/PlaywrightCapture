@@ -27,7 +27,7 @@ dependencies = [
     "pure-magic-rs (>=0.4.0)",
     "lookyloo-models (>=0.2.7)",
     "charset-normalizer (>=3.4.6,<4.0.0)",
-    "pyfaup-rs (>=0.4.6,<0.5.0)"
+    "pyfaup-rs (>=0.4.10,<0.5.0)"
 ]
 
 [project.urls]
