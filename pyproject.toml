@@ -13,19 +13,19 @@ dynamic = [ "classifiers" ]
 
 dependencies = [
     "playwright (>=1.60.0)",
-    "beautifulsoup4[charset-normalizer,lxml] (>=4.14.3)",
+    "beautifulsoup4[charset-normalizer,lxml] (>=4.15.0)",
     "w3lib (>=2.4.1)",
     "playwright-stealth (>=2.0.3)",
     "async-timeout (>=5.0.1) ; python_version < \"3.11\"",
-    "aiohttp[speedups] (>=3.13.5)",
+    "aiohttp[speedups] (>=3.14.1)",
     "aiohttp-socks (>=0.11.0)",
     "typing-extensions (>=4.12.2,<5.0.0) ; python_version < \"3.12\"",
     "dnspython (>=2.7.0,<3.0.0)",
     "python-socks (>=2.7.1,<3.0.0)",
     "rfc3161-client (>=1.0.4,<2.0.0)",
     "orjson (>=3.11.4,<4.0.0)",
-    "pure-magic-rs (>=0.4.0)",
-    "lookyloo-models (>=0.2.7)",
+    "pure-magic-rs (>=0.4.3)",
+    "lookyloo-models (>=0.2.8)",
     "charset-normalizer (>=3.4.6,<4.0.0)",
     "pyfaup-rs (>=0.4.6,<0.5.0)"
 ]
@@ -46,14 +46,14 @@ classifiers=[
 [project.optional-dependencies]
 recaptcha = [
     "pydub-ng (>=0.2.0)",
-    "SpeechRecognition (>=3.16.1)"
+    "SpeechRecognition (>=3.17.0)"
 ]
 
 [tool.poetry.group.dev.dependencies]
 types-beautifulsoup4 = "^4.12.0.20250516"
-pytest = "^9.0.3"
+pytest = "^9.1.0"
 mypy = "^2.1.0"
-types-dateparser = "^1.4.0.20260518"
+types-dateparser = "^1.4.1.20260617"
 types-pytz = "^2026.2.0.20260518"
 
 
