@@ -1349,14 +1349,14 @@ files = [
 
 [[package]]
 name = "lookyloo-models"
-version = "0.2.8"
+version = "0.2.9"
 description = "All the Pydantic models used across Lookyloo"
 optional = false
 python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "lookyloo_models-0.2.8-py3-none-any.whl", hash = "sha256:e8af80e7336cf29c9b1ed65292c6e568a9ad24fc2d798bfe7121810faaf1a688"},
-    {file = "lookyloo_models-0.2.8.tar.gz", hash = "sha256:9c25ed5978a0ae458ad76b5c8cfa24ce5fe6b96fd349e8cb8692ef5972cb85e3"},
+    {file = "lookyloo_models-0.2.9-py3-none-any.whl", hash = "sha256:d335356f083c15114e299b4badc4ba75836bdaa2891a0f4846ccef548e3611dd"},
+    {file = "lookyloo_models-0.2.9.tar.gz", hash = "sha256:a1e83c966f046129195c646eabbae0586bfa9d1a69fa30e4fc570ea68cb4c150"},
 ]
 
 [package.dependencies]
@@ -3343,4 +3343,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "429836ee3747a59df090786fb437fca9b9bf725e9a188cff3c2d5983114dc387"
+content-hash = "0a9a810c2a8380481a973766d2fcef5fd1f23ad4c24b5dd49010aae606cf30a3"
