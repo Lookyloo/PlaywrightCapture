@@ -8,14 +8,6 @@ Simple replacement for [splash](https://github.com/scrapinghub/splash) using [pl
 pip install playwrightcapture
 ```
 
-# Note for Ubuntu 26.04 pre-1.61.0
-
-It is not supported, and `playwright install` fails. A quick and dirty fix is
-
-```bash
-PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 playwright install
-```
-
 # Usage
 
 A very basic example:
