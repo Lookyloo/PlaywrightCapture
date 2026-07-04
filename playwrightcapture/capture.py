@@ -1799,7 +1799,7 @@ class Capture():
                 self.logger.debug('Frame not loaded yet, cannot get content.')
             else:
                 try:
-                    async with timeout(5):
+                    async with timeout(10):
                         return await page.content()
                 except (Error, TimeoutError, asyncio.TimeoutError):
                     self.logger.debug('Unable to get page content, trying again.')
@@ -1810,33 +1810,37 @@ class Capture():
                     break
             tries -= 1
             if tries > 0:
-                await self._wait_for_random_timeout(page, 2)
-                await self._safe_wait(page, 2)
-        else:
-            # got no content
-            if page.url and page.url.strip() and page.url.strip().startswith('data'):
-                self.logger.debug(f'Data URL in frame: {page.url}')
-                # 2026-02-10: if the URL starts with data, we have a data URI, and possibly some content
-                if parsed := self.__parse_data_uri(page.url):
-                    mime, mime_params, content = parsed
-                    charset = 'utf-8'
-                    if mime_params:
-                        # try to get charset
-                        if qs := parse_qs(mime_params):
-                            if charsets := qs.get('charset'):
-                                try:
-                                    charset = codecs.lookup(charsets[0]).name
-                                except LookupError:
-                                    charset = 'utf-8'
-                    if content:
-                        return unquote(content, encoding=charset)
-                    else:
-                        self.logger.warning('No content: {page.url}')
+                try:
+                    await self._wait_for_random_timeout(page, 2)
+                    await self._safe_wait(page, 2)
+                except Exception as e:
+                    self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
+                    break
+
+        # got no content
+        if page.url and page.url.strip() and page.url.strip().startswith('data'):
+            self.logger.debug(f'Data URL in frame: {page.url}')
+            # 2026-02-10: if the URL starts with data, we have a data URI, and possibly some content
+            if parsed := self.__parse_data_uri(page.url):
+                mime, mime_params, content = parsed
+                charset = 'utf-8'
+                if mime_params:
+                    # try to get charset
+                    if qs := parse_qs(mime_params):
+                        if charsets := qs.get('charset'):
+                            try:
+                                charset = codecs.lookup(charsets[0]).name
+                            except LookupError:
+                                charset = 'utf-8'
+                if content:
+                    return unquote(content, encoding=charset)
                 else:
-                    self.logger.warning('Attempted to get data URL content and failed: {page.url}')
-            elif page.name and page.name.strip():
-                # 2026-02-16: some frame names are full HTML blobs, with extra things. Better than nothing.
-                return unquote(page.name)
+                    self.logger.warning('No content: {page.url}')
+            else:
+                self.logger.warning('Attempted to get data URL content and failed: {page.url}')
+        elif page.name and page.name.strip():
+            # 2026-02-16: some frame names are full HTML blobs, with extra things. Better than nothing.
+            return unquote(page.name)
         return None
 
     def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> list[str]:
@@ -2008,6 +2012,7 @@ class Capture():
             'Host unreachable through SOCKSv5 server.',
             'Operation was cancelled',
             'The URL can’t be shown',
+            'Frame was detached',
             # JS stuff
             'TurnstileError: [Cloudflare Turnstile] Error: 300030.',
             # The browser barfed
