@@ -2837,31 +2837,25 @@ files = [
 
 [[package]]
 name = "rfc3161-client"
-version = "1.0.6"
+version = "1.0.7"
 description = ""
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "rfc3161_client-1.0.6-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:9a98e9c7ff632d9571fcea25fb70bde0e8339b86368aef67a65f6a301f125733"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:0b3920334f7334ec3bb9c319d53a5d08cd43b6883f75e2669cfd869cd264d53a"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1671b1be16480ea54c0d36239efd0fb62c13dd572a9865a5e91fea39f1b95303"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:63355099d932851eac507806bb9d0937dab546a66d5857d888168799ec635f6d"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:2bc9835467f6166edd6f876470484e5b294ee141add6eff6a59f5047937aaa75"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e3caffaebf43242b000c4a6659d60eaf19c3b161ccbe05b15634a856c9ea7e61"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:b7ad54288a49379b01b1d0d9d15167d2b7c6c7f940332ab85eeb4a6e844da8c7"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:85a1d71d1eb2c9bced2b3eb75e96f9fe49732ec2567b5dafa1dd889fff42b7fe"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:1be4e1133f0f7fe875629f2c358285503c1cfc79cebfbc3fb4e28b8a57d6f1a4"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:bc379167238df32cbcc1dc9c324088559c1734331030f5293d75f4fd37b5f4f6"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-win32.whl", hash = "sha256:8631f7db7c1327bf87ee6a9a8681b4cd6bc2a90aae651388f29d045cd9ff1ac9"},
-    {file = "rfc3161_client-1.0.6-cp39-abi3-win_amd64.whl", hash = "sha256:4ef4b096abe7d55b020526e39932c2721939a6c55e9a5cd3b3e77897a0942937"},
-    {file = "rfc3161_client-1.0.6-pp310-pypy310_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8102165201c5224cf6e6634bfd68c6a39e8f800601188216f8210face4861215"},
-    {file = "rfc3161_client-1.0.6-pp310-pypy310_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:e16ed34f6f33fd62aa3b1f83615ecf2f96e1b1f57df4e1a36570b3f895333972"},
-    {file = "rfc3161_client-1.0.6-pp311-pypy311_pp73-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:78cdc6bde331492cb94f69328831d5c56b271012b00c6f1784c2e4b33837d585"},
-    {file = "rfc3161_client-1.0.6-pp311-pypy311_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:940e1fc95ec0ca734927a82bcb5363fa988ef1a085d238ff0c861f29c0cfb746"},
-    {file = "rfc3161_client-1.0.6-pp39-pypy39_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3da328ba08139846b1ab3a03402ba8a5f3659a640dbe2cd6a18f7f342e99ba98"},
-    {file = "rfc3161_client-1.0.6-pp39-pypy39_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:bed6ef8e194cab85f6ec5678995b6406bb568383ebb6a4301be40e7939dd28d9"},
-    {file = "rfc3161_client-1.0.6.tar.gz", hash = "sha256:9969262fe6c08ecce39f9fe3996cf412187793834a022a643803090db5aae6b4"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:351cb9149ea4f0db6206711d795f29ab23be2f28d4ac615d2ac6e47aed96d5fa"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:966ab2b49b1dd157527818985512099c44fa8d3510eb4288e7bb986cd215b860"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:83cd871823fa998e2d6a91e1a09881c798b016a87b71bad8e29b9135e4b6c036"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:3cf66df2e31674206699a5d4d31ca81f57e84c4892de3c676341ec2c3f764ae1"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8db252741022bc27e1150c066b163130dc9fcded5822dc079217d5df3e5689a1"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2ee940d6c65648732fa02606d6277356382347e34e89be54403ed4825cc9d391"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:ec52ada36981e74f8926290f5cf9e8e81b4779b907dab17cf2e7d000d0e5a230"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:c5b29bf5e4c01350654e80db8761466bbdf41efd2794c819493da63effa8a226"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:ad799a0500e4a7c56172e247fe29c6029903b5c43eb2c5ff5b35d5641e37a325"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:563d2a87d21fa184782afd0cf57f06e3713580810c0dd62f7271ec2ae83b7219"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-win32.whl", hash = "sha256:f5ba8607a6d44dd194e0e0ba68f9b6e8501d69a79b5b7b34a2228040050b59a4"},
+    {file = "rfc3161_client-1.0.7-cp39-abi3-win_amd64.whl", hash = "sha256:5ea1340fa199c529af7b432c06689c865db8f395f4d6756b0a7663ffdbc04840"},
+    {file = "rfc3161_client-1.0.7.tar.gz", hash = "sha256:8c02330b8b09cbf88f2f5f1ecdb6e6b76c0c9bd7c4199a5068ab43b95d7ab8e5"},
 ]
 
 [package.dependencies]
@@ -3346,4 +3340,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "8f6e17e2f4dbd19901ee0558cc86b79a2ac7f2ac3edd324df97fda3e8cee9e4d"
+content-hash = "664ea8fa45b4ae37d4302d86e4b6c4d1d06515c08cbc5fb48ffe4a31b062533f"
