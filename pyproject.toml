@@ -25,7 +25,7 @@ dependencies = [
     "rfc3161-client (>=1.0.4,<2.0.0)",
     "orjson (>=3.11.4,<4.0.0)",
     "pure-magic-rs (>=0.4.3)",
-    "lookyloo-models (>=0.2.9)",
+    "lookyloo-models (>=0.3.0)",
     "charset-normalizer (>=3.4.6,<4.0.0)",
     "pyfaup-rs (>=0.4.6,<0.5.0)"
 ]
