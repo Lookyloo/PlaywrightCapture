@@ -138,23 +138,6 @@ class Capture():
     _default_timeout: int = 90  # set to 90s by default
     _minimal_timeout: int = 15  # set to 15s - It makes little sense to attempt a capture below that limit.
 
-    _requests: dict[str, bytes] = {}
-
-    # Initialize the values with getter/setter
-    _headers: Headers = {}
-    _cookies: list[Cookie] = []
-    _storage: StorageState = {}
-    _viewport: ViewportSize | None = None
-    _user_agent: str = ''
-    _http_credentials: HttpCredentials = {}
-    _geolocation: Geolocation = {}
-    _timezone_id: str = ''
-    _locale: str = 'en-US'
-    _color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
-    _java_script_enabled: bool = True
-    _capture_timeout: int = _default_timeout
-    _proxy: ProxySettings = {}
-
     # Do not wait for webfonts before taking screenshots.
     # 2026-04-08: Pass the env to the process in the launch call
     _env: dict[str, str | float | bool] = {'PW_TEST_SCREENSHOT_NO_FONTS_READY': '1'}
@@ -175,6 +158,27 @@ class Capture():
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
+
+        # #### internal variables, do not make them class vars!
+        self._requests: dict[str, bytes] = {}
+
+        # Initialize the values with getter/setter
+        self._headers: Headers = {}
+        self._cookies: list[Cookie] = []
+        self._storage: StorageState = {}
+        self._viewport: ViewportSize | None = None
+        self._user_agent: str = ''
+        self._http_credentials: HttpCredentials = {}
+        self._geolocation: Geolocation = {}
+        self._timezone_id: str = ''
+        self._locale: str = 'en-US'
+        self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
+        self._java_script_enabled: bool = True
+        self._capture_timeout: int = self._default_timeout
+        self._proxy: ProxySettings = {}
+
+        # ###
+
         self.logger: Logger | PlaywrightCaptureLogAdapter
         self.uuid = uuid
         self.only_global_lookup = only_global_lookup
@@ -552,9 +556,7 @@ class Capture():
 
     @storage.setter
     def storage(self, storage: dict[str, Any] | None) -> None:
-        if not storage:
-            return
-        if 'cookies' in storage and 'origins' in storage:
+        if storage and 'cookies' in storage and 'origins' in storage:
             self._storage['cookies'] = storage['cookies']
             self._storage['origins'] = storage['origins']
 
