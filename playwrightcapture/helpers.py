@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+from functools import cache
 import sys
 
 from collections import defaultdict
 
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 from .exceptions import UnknownPlaywrightDeviceType
 
@@ -26,10 +28,15 @@ class PlaywrightDevice(TypedDict):
     default_browser_type: str
 
 
+@cache
 def get_devices(in_testsuite: bool=False) -> dict[str, dict[str, dict[str, PlaywrightDevice]]]:
+
+    async def get_devices() -> dict[str, PlaywrightDevice]:
+        async with async_playwright() as playwright:
+            return playwright.devices
+
     to_return: dict[str, dict[str, dict[str, PlaywrightDevice]]] = {'desktop': defaultdict(dict), 'mobile': defaultdict(dict)}
-    with sync_playwright() as playwright:
-        devices: dict[str, PlaywrightDevice] = playwright.devices
+    devices: dict[str, PlaywrightDevice] = asyncio.run(get_devices())
     for device_name, settings in devices.items():
         splitted_name = device_name.split(' ')
         if splitted_name[0] == 'Desktop':

@@ -238,7 +238,10 @@ class Capture():
 
     async def __aenter__(self) -> Capture:
         """Launch Playwright and the configured browser for this capture."""
-        self.playwright = await async_playwright().start()
+        try:
+            self.playwright = await async_playwright().start()
+        except Exception as e:
+            raise PlaywrightCaptureException('Unable to launch Playwright.') from e
 
         if self.device_name:
             if self.device_name in self.playwright.devices:
@@ -2135,7 +2138,12 @@ class Capture():
             else:
                 self.logger.warning(f'Got no content for {frame_id}.')
         if frame.child_frames:
-            to_return['children'] = await asyncio.gather(*[self.make_frame_tree(child) for child in frame.child_frames])
+            all_children = await asyncio.gather(*[self.make_frame_tree(child) for child in frame.child_frames], return_exceptions=True)
+            # separate exceptions vs. actual responses
+            for e in [be for be in all_children if isinstance(be, BaseException)]:
+                self.logger.warning(f'Exception in {f_name}: {e}')
+
+            to_return['children'] = [fc for fc in all_children if not isinstance(fc, BaseException)]
         return to_return
 
     # Method copied from HAR2Tree
@@ -2300,7 +2308,7 @@ class Capture():
         # use the same technique as in lookyloo to resolve many domains in parallel
         semaphore = asyncio.Semaphore(30)
         all_requests = [resolver.resolve(hostname, semaphore) for hostname in hostnames]
-        await asyncio.gather(*all_requests)
+        await asyncio.gather(*all_requests, return_exceptions=True)
         self.logger.debug('Resolved all domains through the proxy.')
         for entry in harfile['log']['entries']:
             if entry['request']['url']:
