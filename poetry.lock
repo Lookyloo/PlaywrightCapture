@@ -3003,14 +3003,14 @@ types-html5lib = "*"
 
 [[package]]
 name = "types-dateparser"
-version = "1.4.1.20260617"
+version = "1.4.1.20260806"
 description = "Typing stubs for dateparser"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "types_dateparser-1.4.1.20260617-py3-none-any.whl", hash = "sha256:af5619f005b56880898c54a9cb25bbc1c145751710d456be4f94c50751316ddb"},
-    {file = "types_dateparser-1.4.1.20260617.tar.gz", hash = "sha256:aaf1958a88e2bca849ff36b4696476c829c7b0ad06ff8d473635a8a985468346"},
+    {file = "types_dateparser-1.4.1.20260806-py3-none-any.whl", hash = "sha256:5e8fdd971c063d4f361a7fdd51a6d41d8e98d7d6675b167d05182f579944e22a"},
+    {file = "types_dateparser-1.4.1.20260806.tar.gz", hash = "sha256:47ba1f3b7bbf458c6e23f2e324621123c4fd6bd1d18111a9d4ceb572e9e6c837"},
 ]
 
 [[package]]
@@ -3321,4 +3321,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "c29ff5494bcf25c3d33d8bea00aa9f45d4a9e51d487e80a2d0e8e0a20b074a00"
+content-hash = "8ebe894026ce36cb33895265ba94fbed1e2819b42769e8aee3695626fa00957d"
