@@ -1365,7 +1365,8 @@ class Capture():
                 not_local, message = self.__check_local_url(request.url)
                 if not_local:
                     await route.continue_()
-                await route.fulfill(status=404, content_type="text/plain", body=message)
+                else:
+                    await route.fulfill(status=404, content_type="text/plain", body=message)
 
         if self.only_global_lookup:
             # routes are processed in reverse order, the latest one in this list is processed first
