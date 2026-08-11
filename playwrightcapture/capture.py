@@ -1811,7 +1811,7 @@ class Capture():
                     # The frame is loaded, if we get no content there, only retry one more time.
                     tries -= 1
                 except Exception as e:
-                    self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
+                    self.logger.warning(f'The Playwright Page is in a broken state (unable to get content): {e}.')
                     break
             tries -= 1
             if tries > 0:
@@ -1819,7 +1819,7 @@ class Capture():
                     await self._wait_for_random_timeout(page, 2)
                     await self._safe_wait(page, 2)
                 except Exception as e:
-                    self.logger.warning(f'The Playwright Page is in a broken state: {e}.')
+                    self.logger.warning(f'The Playwright Page is in a broken state (unable to wait): {e}.')
                     break
 
         # got no content
@@ -2128,22 +2128,25 @@ class Capture():
         else:
             f_name = frame.name
         frame_id = f'{f_name}@{frame.url}'
+        to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': ''}
         if frame.is_detached():
             self.logger.debug(f'{frame_id} is detached.')
-        to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': await self._failsafe_get_content(frame)}
+        else:
+            to_return['content'] = await self._failsafe_get_content(frame)
+            if frame.child_frames:
+                all_children = await asyncio.gather(*[self.make_frame_tree(child) for child in frame.child_frames], return_exceptions=True)
+                # separate exceptions vs. actual responses
+                for e in [be for be in all_children if isinstance(be, BaseException)]:
+                    self.logger.warning(f'Exception in {f_name}: {e}')
+
+                to_return['children'] = [fc for fc in all_children if not isinstance(fc, BaseException)]
+
         if not to_return.get('content'):
             if frame.url in ['about:blank', 'about:srcdoc', '', None, 'chrome-error://chromewebdata/']:
                 # too noisy in the warnings
                 self.logger.debug(f'Got no content for {frame_id}.')
             else:
                 self.logger.warning(f'Got no content for {frame_id}.')
-        if frame.child_frames:
-            all_children = await asyncio.gather(*[self.make_frame_tree(child) for child in frame.child_frames], return_exceptions=True)
-            # separate exceptions vs. actual responses
-            for e in [be for be in all_children if isinstance(be, BaseException)]:
-                self.logger.warning(f'Exception in {f_name}: {e}')
-
-            to_return['children'] = [fc for fc in all_children if not isinstance(fc, BaseException)]
         return to_return
 
     # Method copied from HAR2Tree
