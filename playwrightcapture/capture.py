@@ -1302,6 +1302,49 @@ class Capture():
             except Exception as e:
                 self.logger.warning(f'Unable to get trusted timestamps: {e}')
 
+    def __check_local_url(self, url: str) -> tuple[bool, str]:
+        try:
+            _url = Url(url)
+        except ValueError as e:
+            self.logger.warning(f"Unable to parse URL: {url}: {e}")
+            return False, f"Unable to parse URL '{url}', blocked."
+
+        if not _url.host:
+            self.logger.warning(f"Missing Host: {url}")
+            return False, f"Missing host in URL '{url}', blocked."
+        try:
+            ip = ipaddress.ip_address(_url.host.try_into_ip())
+            if ip.is_global:
+                return True, "Global IP"
+            # Non-global IP
+            self.logger.warning(f"Attempt to open a non-public IP: {url}")
+            return False, f"Attempted to open {url}, blocked."
+        except ValueError:
+            # not an IP, continue to hostname
+            pass
+
+        try:
+            hostname = _url.host.try_into_hostname()
+            if not hostname:
+                self.logger.warning(f"Missing hostname: {url}")
+                return False, f"Missing hostname in URL '{url}', blocked."
+            elif str(hostname) == 'localhost':
+                self.logger.warning(f"Attempt to open localhost: {url}")
+                return False, "Attempted to open localhost, blocked."
+            elif suffix := hostname.suffix:
+                if str(suffix) == 'local':
+                    # Got a local domain
+                    self.logger.warning(f"Attempt to open a local domain: {url}")
+                    return False, f"Attempted to open {url}, blocked."
+            # NOTE: may want to add other things there, but do not want to trigger a domain resolution.
+            return True, "Public hostname"
+        except ValueError:
+            # not an hostname
+            pass
+        # should not happen (should have an IP or a hostname
+        self.logger.warning(f"Opening a weird URL: {url}")
+        return False, f"Attempted to open a weird URL '{url}', blocked."
+
     async def open_page(self, page: Page, url: str, errors: list[str], referer: str | None=None) -> None:
 
         async def catch_file_route(route: Route, request: Request) -> None:
@@ -1319,51 +1362,10 @@ class Capture():
                 await route.continue_()
             else:
                 # other URLs
-                try:
-                    _url = Url(request.url)
-                except ValueError as e:
-                    # some URLs will fail here when they have a specific scheme
-                    allowed_schemes = ('chrome-extension:', )
-                    if request.url.startswith(allowed_schemes):
-                        return await route.continue_()
-                    self.logger.warning(f"Unable to parse URL: {request.url}: {e}")
-                    return await route.fulfill(status=404, content_type="text/plain", body=f"Unable to parse URL '{request.url}', blocked.")
-
-                if not _url.host:
-                    self.logger.warning(f"Missing Host: {request.url}")
-                    return await route.fulfill(status=404, content_type="text/plain", body=f"Missing host in URL '{request.url}', blocked.")
-                try:
-                    ip = ipaddress.ip_address(_url.host.try_into_ip())
-                    if ip.is_global:
-                        return await route.continue_()
-                    # Non-global IP
-                    self.logger.warning(f"Attempt to open a non-public IP: {request.url}")
-                    return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
-                except ValueError:
-                    # not an IP, continue to hostname
-                    pass
-
-                try:
-                    hostname = _url.host.try_into_hostname()
-                    if not hostname:
-                        self.logger.warning(f"Missing hostname: {request.url}")
-                        return await route.fulfill(status=404, content_type="text/plain", body=f"Missing hostname in URL '{request.url}', blocked.")
-                    elif str(hostname) == 'localhost':
-                        self.logger.warning(f"Attempt to open localhost: {request.url}")
-                        return await route.fulfill(status=404, content_type="text/plain", body="Attempted to open localhost, blocked.")
-                    elif suffix := hostname.suffix:
-                        if str(suffix) == 'local':
-                            # Got a local domain
-                            self.logger.warning(f"Attempt to open a local domain: {request.url}")
-                            return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open {request.url}, blocked.")
-                    # NOTE: may want to add other things there, but do not want to trigger a domain resolution.
-                    return await route.continue_()
-                except ValueError:
-                    # not an hostname
-                    pass
-                # should not happen (should have an IP or a hostname
-                self.logger.warning(f"Opening a weird URL: {request.url}")
-                return await route.fulfill(status=404, content_type="text/plain", body=f"Attempted to open a weird URL '{request.url}', blocked.")
+                not_local, message = self.__check_local_url(request.url)
+                if not_local:
+                    await route.continue_()
+                await route.fulfill(status=404, content_type="text/plain", body=message)
 
         if self.only_global_lookup:
             # routes are processed in reverse order, the latest one in this list is processed first
@@ -1371,12 +1373,20 @@ class Capture():
             await page.route("**/*", handler=catch_local_route)  # last one to be checked
             # unless they're the actual URL we're rendering, block.
             await page.route("file:**/*", handler=catch_file_route)
-            # blob URLs, they're always fine as their content is created in memory by the browser
-            # https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Schemes/blob
-            await page.route("blob:**/*", lambda route: route.continue_())
-            # filesystem URLs, they point to cache or a virtual file system that is browser managed
-            # https://developer.mozilla.org/en-US/docs/Web/API/File_System_API
-            await page.route("filesystem:**/*", lambda route: route.continue_())
+
+            # these schemes are allowed to continue by default, they do not hit anything private
+            allowed_schemes = [
+                # blob URLs, they're always fine as their content is created in memory by the browser
+                # https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Schemes/blob
+                "blob:**/*",
+                # filesystem URLs, they point to cache or a virtual file system that is browser managed
+                # https://developer.mozilla.org/en-US/docs/Web/API/File_System_API
+                "filesystem:**/*",
+                # also purely internal to the browser
+                "chrome-extension:**/*"
+            ]
+            for scheme in allowed_schemes:
+                await page.route(scheme, lambda route: route.continue_())
 
         try:
             await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
@@ -2264,6 +2274,12 @@ class Capture():
                 try:
                     self.logger.debug(f'Attempting to fetch favicon from {u}.')
                     url_to_fetch = urljoin(rendered_url, u)
+                    if self.only_global_lookup:
+                        not_local, message = self.__check_local_url(url_to_fetch)
+                        if not_local is False:
+                            # got a local URL
+                            self.logger.warning(f'Attempted to get a local favicon: {message}')
+                            continue
                     favicon = b''
                     if url_to_fetch in self._requests:
                         favicon = self._requests[url_to_fetch]
