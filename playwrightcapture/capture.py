@@ -292,7 +292,7 @@ class Capture():
 
         return self
 
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+    async def __aexit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
         """Close browser resources and suppress exceptions like the upstream context manager."""
 
         if self.browser.is_connected():
@@ -315,6 +315,9 @@ class Capture():
             except Exception as e:
                 self.logger.warning(f'Unable to remove temp HAR file {self._temp_harfile.name}: {e}')
 
+        if exc_type:
+            self.logger.warning(f'An exception occured during the capture: {exc_value}')
+            return False
         return True
 
     async def setup_page_capture(self, *, allow_tracking: bool=False) -> Page:
