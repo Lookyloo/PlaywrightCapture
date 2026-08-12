@@ -2278,6 +2278,10 @@ class Capture():
                 try:
                     self.logger.debug(f'Attempting to fetch favicon from {u}.')
                     url_to_fetch = urljoin(rendered_url, u)
+                    if url_to_fetch.startswith('/'):
+                        self.logger.info(f'Landing page not valid, cannot get favicon: {rendered_url}')
+                        continue
+
                     if self.only_global_lookup:
                         not_local, message = self.__check_local_url(url_to_fetch)
                         if not_local is False:
