@@ -177,19 +177,19 @@ speedups = ["Brotli (>=1.2) ; platform_python_implementation == \"CPython\" and 
 
 [[package]]
 name = "aiohttp-socks"
-version = "0.11.0"
+version = "0.12.0"
 description = "Proxy connector for aiohttp"
 optional = false
-python-versions = ">=3.8.0"
+python-versions = ">=3.9.0"
 groups = ["main"]
 files = [
-    {file = "aiohttp_socks-0.11.0-py3-none-any.whl", hash = "sha256:9aacce57c931b8fbf8f6d333cf3cafe4c35b971b35430309e167a35a8aab9ec1"},
-    {file = "aiohttp_socks-0.11.0.tar.gz", hash = "sha256:0afe51638527c79077e4bd6e57052c87c4824233d6e20bb061c53766421b10f0"},
+    {file = "aiohttp_socks-0.12.0-py3-none-any.whl", hash = "sha256:ba6f95ec775c761d87f8578ab48f137d0457c676da104984202bf75e747d5ee6"},
+    {file = "aiohttp_socks-0.12.0.tar.gz", hash = "sha256:3caf9f5a4164611122d412bc11b2f9114fd29c85e1ba27bb38060d3c236bdc8d"},
 ]
 
 [package.dependencies]
 aiohttp = ">=3.10.0"
-python-socks = {version = ">=2.4.3,<3.0.0", extras = ["asyncio"]}
+python-socks = {version = ">=2.4.3,<4.0.0", extras = ["asyncio"]}
 
 [[package]]
 name = "aiosignal"
@@ -3389,4 +3389,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "764b9450f698b724dc9ff057fa881ac72774054ee07d3a6dd90a32bc8ad6c7fa"
+content-hash = "15306b4c576f9e79ac5c9d6c98b365b0ef61ebe4210631e55c502458a7825658"
