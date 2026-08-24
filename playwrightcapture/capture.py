@@ -31,7 +31,7 @@ from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
 from lookyloo_models import Cookie, CaptureSettings
 from playwright._impl._errors import TargetClosedError
-from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route
+from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route, ConsoleMessage
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS  # type: ignore[attr-defined]
 from pure_magic_rs import MagicDb
@@ -100,6 +100,9 @@ class CaptureResponse(TypedDict, total=False):
     # if the capture is triggered with with_trusted_timestamps, the response contains a
     # dict[<entry name>] = '<base64 encoded timestamp response>'
     trusted_timestamps: dict[str, str] | None
+
+    # The entries in the debug console gathered during the captue
+    console_messages: list[dict[str, str | int | float]] | None
 
     # One day, playwright will support getting the favicon from the capture itself
     # favicon: Optional[bytes]
@@ -225,6 +228,9 @@ class Capture():
 
         # Trusted Timestamp Settings are provided by LacusCore
         self.tt_settings = tt_settings
+
+        # Gather console messages
+        self.console_messages: list[dict[str, str | int | float]] = []
 
         # Prepare the env to use for playwright
         if env:
@@ -391,6 +397,19 @@ class Capture():
                 self.logger.info(f'Unable to force download: {e}')
                 await route.continue_()
 
+        async def handle_console_msg(msg: ConsoleMessage) -> None:
+            to_add = {'timestamp': msg.timestamp, 'type': msg.type, 'text': msg.text}
+
+            if msg.location.get('url') is not None:
+                to_add['url'] = msg.location['url']
+            if msg.location.get('line') is not None:
+                # can be 0
+                to_add['line'] = msg.location['line']
+            if msg.location.get('column') is not None:
+                # can be 0
+                to_add['column'] = msg.location['column']
+            self.console_messages.append(to_add)
+
         np_retry = 3
         while np_retry > 0:
             try:
@@ -435,6 +454,7 @@ class Capture():
         page.on("requestfinished", store_request)
         page.on("dialog", lambda dialog: dialog.accept())
         page.on("download", handle_download)
+        page.on("console", handle_console_msg)
         return page
 
     def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
@@ -1304,6 +1324,8 @@ class Capture():
                 await self._get_trusted_timestamps(to_return)
             except Exception as e:
                 self.logger.warning(f'Unable to get trusted timestamps: {e}')
+        if self.console_messages:
+            to_return['console_messages'] = self.console_messages
 
     def __check_local_url(self, url: str) -> tuple[bool, str]:
         try:
