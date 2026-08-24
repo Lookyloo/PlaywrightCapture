@@ -2029,6 +2029,7 @@ class Capture():
             'Error receiving data: Connection reset by peer',
             'Internal SOCKSv5 proxy server error.',
             'Host unreachable through SOCKSv5 server.',
+            'Connection to SOCKSv5 proxy server lost',
             'Operation was cancelled',
             'The URL can’t be shown',
             'Frame was detached',
