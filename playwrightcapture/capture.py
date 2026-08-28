@@ -2314,6 +2314,9 @@ class Capture():
                     if url_to_fetch.startswith('/'):
                         self.logger.info(f'Landing page not valid, cannot get favicon: {rendered_url}')
                         continue
+                    if url_to_fetch.startswith('blob'):
+                        self.logger.warning(f'Cannot get a favicon from a blob URL: {url_to_fetch}')
+                        continue
 
                     if self.only_global_lookup:
                         not_local, message = self.__check_local_url(url_to_fetch)
