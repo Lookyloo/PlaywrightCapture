@@ -1230,6 +1230,11 @@ class Capture():
             self.logger.warning(f"Unable to get cookies: {e}")
             errors.append(f'Unable to get the cookies: {e}')
             self.should_retry = True
+        except Exception as e:
+            # When the driver explodes for no clear reason.
+            self.logger.warning(f"[Generic Exception] Unable to get cookies: {e}")
+            errors.append(f'[Generic Exception] Unable to get the cookies: {e}')
+            self.should_retry = True
 
         # Collect storage state, including IndexedDB, to capture the full browser state.
         try:
@@ -1242,6 +1247,11 @@ class Capture():
         except Error as e:
             self.logger.warning(f"Unable to get the storage: {e}")
             errors.append(f'Unable to get the storage: {e}')
+            self.should_retry = True
+        except Exception as e:
+            # When the driver explodes for no clear reason.
+            self.logger.warning(f"[Generic Exception] Unable to get the storage: {e}")
+            errors.append(f'[Generic Exception] Unable to get the storage: {e}')
             self.should_retry = True
 
         try:
