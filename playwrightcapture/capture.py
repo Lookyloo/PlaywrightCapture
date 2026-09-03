@@ -1397,8 +1397,8 @@ class Capture():
                 await route.continue_()
             else:
                 # other URLs
-                not_local, message = self.__check_local_url(request.url)
-                if not_local:
+                public, message = self.__check_local_url(request.url)
+                if public:
                     await route.continue_()
                 else:
                     await route.fulfill(status=404, content_type="text/plain", body=message)
@@ -2294,6 +2294,15 @@ class Capture():
         In the meantime, we try to get all the potential ones in this method.
         Method inspired by https://github.com/ail-project/ail-framework/blob/master/bin/lib/crawlers.py
         """
+        async def __check_local_middleware(req: aiohttp.ClientRequest, handler: aiohttp.ClientHandlerType) -> aiohttp.ClientResponse:
+            if self.only_global_lookup:
+                public, message = self.__check_local_url(str(req.url))
+                if public is False:
+                    # got a local URL
+                    self.logger.warning(f'Attempted to get a local favicon (in redirect): {message}')
+                    raise aiohttp.ClientError(f'Attempted to get a local favicon (in redirect): {message}')
+            return await handler(req)
+
         connector = None
         if self.proxy:
             # NOTE 2024-05-17: switch to async to fetch, the lib uses socks5h by default
@@ -2319,8 +2328,8 @@ class Capture():
                         continue
 
                     if self.only_global_lookup:
-                        not_local, message = self.__check_local_url(url_to_fetch)
-                        if not_local is False:
+                        public, message = self.__check_local_url(url_to_fetch)
+                        if public is False:
                             # got a local URL
                             self.logger.warning(f'Attempted to get a local favicon: {message}')
                             continue
@@ -2328,7 +2337,7 @@ class Capture():
                     if url_to_fetch in self._requests:
                         favicon = self._requests[url_to_fetch]
                     if not favicon:
-                        async with session.get(url_to_fetch, ssl=False) as favicon_response:
+                        async with session.get(url_to_fetch, ssl=False, middlewares=[__check_local_middleware]) as favicon_response:
                             favicon_response.raise_for_status()
                             favicon = await favicon_response.read()
                     if favicon:
