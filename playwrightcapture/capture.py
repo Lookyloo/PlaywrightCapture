@@ -703,6 +703,7 @@ class Capture():
             **device_context_settings
         )
         self.context.set_default_timeout(self._capture_timeout * 1000)
+        await self.context.credentials.install()
 
         if self._init_script:
             await self.context.add_init_script(script=self._init_script)
@@ -1346,7 +1347,7 @@ class Capture():
             return False, f"Unable to parse URL '{url}', blocked."
 
         if not _url.host:
-            self.logger.warning(f"Missing Host: {url}")
+            self.logger.info(f"Missing Host: {url}")
             return False, f"Missing host in URL '{url}', blocked."
         try:
             ip = ipaddress.ip_address(_url.host.try_into_ip())
@@ -2339,6 +2340,9 @@ class Capture():
                         continue
 
                     if self.only_global_lookup:
+                        if url_to_fetch == "file:///favicon.ico":
+                            # skip, no need to log that.
+                            continue
                         public, message = self.__check_local_url(url_to_fetch)
                         if public is False:
                             # got a local URL
