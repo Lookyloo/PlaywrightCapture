@@ -1840,6 +1840,21 @@ class Capture():
             self.__network_not_idle += 1
             self.logger.debug(f'Timed out waiting for network idle, max wait: {max_wait}s')
 
+    def __decode_datauri(self, parsed: tuple[str, str, bytes]) -> str | None:
+        mime, mime_params, content = parsed
+        charset = 'utf-8'
+        if mime_params:
+            # try to get charset
+            if qs := parse_qs(mime_params):
+                if charsets := qs.get('charset'):
+                    try:
+                        charset = codecs.lookup(charsets[0]).name
+                    except LookupError:
+                        charset = 'utf-8'
+        if content:
+            return unquote(content, encoding=charset)
+        return None
+
     async def _failsafe_get_content(self, page: Frame) -> str | None:
         ''' The page might be changing for all kind of reason (generally a JS timeout).
         In that case, we try a few times to get the HTML.'''
@@ -1874,18 +1889,8 @@ class Capture():
             self.logger.debug(f'Data URL in frame: {page.url}')
             # 2026-02-10: if the URL starts with data, we have a data URI, and possibly some content
             if parsed := self.__parse_data_uri(page.url):
-                mime, mime_params, content = parsed
-                charset = 'utf-8'
-                if mime_params:
-                    # try to get charset
-                    if qs := parse_qs(mime_params):
-                        if charsets := qs.get('charset'):
-                            try:
-                                charset = codecs.lookup(charsets[0]).name
-                            except LookupError:
-                                charset = 'utf-8'
-                if content:
-                    return unquote(content, encoding=charset)
+                if content := self.__decode_datauri(parsed):
+                    return content
                 else:
                     self.logger.warning('No content: {page.url}')
             else:
@@ -2179,6 +2184,11 @@ class Capture():
         to_return: FramesResponse = {'name': frame.name, 'url': frame.url, 'content': ''}
         if frame.is_detached():
             self.logger.debug(f'{frame_id} is detached.')
+            # can be a data url
+            if frame.url and frame.url.strip() and frame.url.strip().startswith('data'):
+                if parsed := self.__parse_data_uri(frame.url):
+                    if content := self.__decode_datauri(parsed):
+                        to_return['content'] = content
         else:
             to_return['content'] = await self._failsafe_get_content(frame)
             if frame.child_frames:
