@@ -1237,9 +1237,10 @@ class Capture():
             self.should_retry = True
 
         # Collect storage state, including IndexedDB, to capture the full browser state.
+        # 2026-09-08: add WebAuth credentials
         try:
             async with timeout(15):
-                to_return['storage'] = await self.context.storage_state(indexed_db=True)
+                to_return['storage'] = await self.context.storage_state(indexed_db=True, credentials=True)
         except (TimeoutError, asyncio.TimeoutError):
             self.logger.warning("Unable to get storage (timeout).")
             errors.append("Unable to get the storage (timeout).")
