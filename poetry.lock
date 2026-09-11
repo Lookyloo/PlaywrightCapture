@@ -2848,14 +2848,14 @@ six = ">=1.5"
 
 [[package]]
 name = "python-socks"
-version = "3.0.0"
+version = "3.1.1"
 description = "Proxy (SOCKS4, SOCKS5, HTTP CONNECT) client for Python"
 optional = false
 python-versions = ">=3.9.0"
 groups = ["main"]
 files = [
-    {file = "python_socks-3.0.0-py3-none-any.whl", hash = "sha256:e06a421d4d7f3fc17ef2740ab6c291640364f6a362b94a1ae87a136c29bd0067"},
-    {file = "python_socks-3.0.0.tar.gz", hash = "sha256:c20ddf978b5c90467bf242757a11dcd00d7c8bd339901de1839b492d5571ab7f"},
+    {file = "python_socks-3.1.1-py3-none-any.whl", hash = "sha256:327e0d6378702c73a7790bf732e9f01392f17b48c7348a50b5bd1f710c2df1be"},
+    {file = "python_socks-3.1.1.tar.gz", hash = "sha256:8d3e817cdbe858dc0bb8c8fdc8e79b6ce37acce110d33374c6f57a675cc9029e"},
 ]
 
 [package.dependencies]
@@ -3523,4 +3523,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "8466079fdae6a881215ebbb24cc12e6f4c41477aa4cb042422415099c497def8"
+content-hash = "c62e662bcd234ce114cd7b3f19c9afeeb24092009e1834ac8246eb51439d75e1"
