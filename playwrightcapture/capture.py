@@ -375,7 +375,7 @@ class Capture():
                     if request.resource_type == 'image' and response.ok:
                         try:
                             if body := await response.body():
-                                m = self.magicdb.best_magic_buffer(body)
+                                m = self.magicdb.best_magic_buffer(body, None)
                                 if m.mime_type.startswith('image'):
                                     self._requests[request.url] = body
                         except Exception:
@@ -2356,7 +2356,7 @@ class Capture():
                             favicon_response.raise_for_status()
                             favicon = await favicon_response.read()
                     if favicon:
-                        m = self.magicdb.best_magic_buffer(favicon)
+                        m = self.magicdb.best_magic_buffer(favicon, None)
                         if not m.mime_type:
                             # empty, ignore
                             pass
