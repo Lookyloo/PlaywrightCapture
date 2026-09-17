@@ -1479,20 +1479,21 @@ files = [
 
 [[package]]
 name = "lookyloo-models"
-version = "0.4.0"
+version = "0.4.1"
 description = "All the Pydantic models used across Lookyloo"
 optional = false
 python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "lookyloo_models-0.4.0-py3-none-any.whl", hash = "sha256:aa07c62cc85a459767c97a1982223ba819a7e7126f4e90c6802432a42405828c"},
-    {file = "lookyloo_models-0.4.0.tar.gz", hash = "sha256:91dec060be3a488fa79218110b2791bd01bf49c8325ebf4959b65d3affb6fd73"},
+    {file = "lookyloo_models-0.4.1-py3-none-any.whl", hash = "sha256:02e5ed17d8939b06005f7ee0e6104aaffd3c6ea65b3102131008c4fc064ae6cc"},
+    {file = "lookyloo_models-0.4.1.tar.gz", hash = "sha256:d16941c8d897a0e5a1044ace0b68015b6b1145802c94d2d036dc8ebbfa038a53"},
 ]
 
 [package.dependencies]
 dateparser = ">=1.4"
 orjson = ">=3.12"
 pydantic = ">=2.13"
+pydantic-extra-types = ">=2.11.1"
 ua-parser = {version = ">=1.0", extras = ["regex"]}
 
 [[package]]
@@ -2662,6 +2663,32 @@ files = [
 typing-extensions = ">=4.14.1"
 
 [[package]]
+name = "pydantic-extra-types"
+version = "2.11.1"
+description = "Extra Pydantic types."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "pydantic_extra_types-2.11.1-py3-none-any.whl", hash = "sha256:1722ea2bddae5628ace25f2aa685b69978ef533123e5638cfbddb999e0100ec1"},
+    {file = "pydantic_extra_types-2.11.1.tar.gz", hash = "sha256:46792d2307383859e923d8fcefa82108b1a141f8a9c0198982b3832ab5ef1049"},
+]
+
+[package.dependencies]
+pydantic = ">=2.5.2"
+typing-extensions = "*"
+
+[package.extras]
+all = ["cron-converter (>=1.2.2)", "pendulum (>=3.0.0,<4.0.0)", "phonenumbers (>=8,<10)", "pycountry (>=23)", "pymongo (>=4.0.0,<5.0.0)", "python-ulid (>=1,<2) ; python_version < \"3.9\"", "python-ulid (>=1,<4) ; python_version >= \"3.9\"", "pytz (>=2024.1)", "semver (>=3.0.2)", "semver (>=3.0.2,<3.1.0)", "tzdata (>=2024.1)", "uuid-utils (>=0.6.0) ; python_version < \"3.14\""]
+cron = ["cron-converter (>=1.2.2)"]
+pendulum = ["pendulum (>=3.0.0,<4.0.0)"]
+phonenumbers = ["phonenumbers (>=8,<10)"]
+pycountry = ["pycountry (>=23)"]
+python-ulid = ["python-ulid (>=1,<2) ; python_version < \"3.9\"", "python-ulid (>=1,<4) ; python_version >= \"3.9\""]
+semver = ["semver (>=3.0.2)"]
+uuid-utils = ["uuid-utils (>=0.6.0) ; python_version < \"3.14\""]
+
+[[package]]
 name = "pydub-ng"
 version = "0.2.0"
 description = "Manipulate audio with a simple and easy high level interface"
@@ -3595,4 +3622,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "e980b6fdcc12134ea38d9b2b4b71aedb93a5aafeb2fa621f5ede23eb0abec32c"
+content-hash = "c4d1fb2ed367dcbe985c80423f9c0964fe465b60d2c0b3382ee2eac0bb57c071"

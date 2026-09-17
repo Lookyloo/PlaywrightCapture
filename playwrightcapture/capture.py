@@ -29,7 +29,7 @@ import orjson
 from aiohttp_socks import ProxyConnector
 from bs4 import BeautifulSoup
 from charset_normalizer import from_bytes
-from lookyloo_models import Cookie, CaptureSettings
+from lookyloo_models import (Cookie, CaptureSettings, ViewportSettings, ProxySettings)
 from playwright._impl._errors import TargetClosedError
 from playwright.async_api import async_playwright, Frame, Error, Page, Download, Request, Route, ConsoleMessage
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -42,9 +42,6 @@ from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter, PlaywrightCaptureException
 from .socks5dnslookup import Socks5Resolver
-
-from zoneinfo import available_timezones
-all_timezones_set = available_timezones()
 
 if sys.version_info < (3, 11):
     from async_timeout import timeout
@@ -67,10 +64,6 @@ else:
 
 
 if TYPE_CHECKING:
-    from playwright._impl._api_structures import (Geolocation,
-                                                  HttpCredentials, Headers,
-                                                  ViewportSize,
-                                                  ProxySettings, StorageState)
     BROWSER = Literal['chromium', 'firefox', 'webkit']
 
 
@@ -87,7 +80,7 @@ class CaptureResponse(TypedDict, total=False):
     last_redirected_url: str
     har: dict[str, Any] | None
     cookies: list[dict[str, Any]] | None
-    storage: StorageState | None
+    storage: dict[str, Any] | None
     error: str | None
     error_name: str | None
     html: str | None
@@ -137,7 +130,7 @@ class TrustedTimestampSettings(TypedDict, total=False):
 class Capture():
 
     _browsers: list[BROWSER] = ['chromium', 'firefox', 'webkit']
-    _default_viewport: ViewportSize = {'width': 1920, 'height': 1080}
+    _default_viewport: dict[str, int] = ViewportSettings.model_validate({'width': 1920, 'height': 1080}).model_dump(exclude_none=True)
     _default_timeout: int = 90  # set to 90s by default
     _minimal_timeout: int = 15  # set to 15s - It makes little sense to attempt a capture below that limit.
 
@@ -166,19 +159,8 @@ class Capture():
         self._requests: dict[str, bytes] = {}
 
         # Initialize the values with getter/setter
-        self._headers: Headers = {}
-        self._cookies: list[Cookie] = []
-        self._storage: StorageState = {}
-        self._viewport: ViewportSize | None = None
-        self._user_agent: str = ''
-        self._http_credentials: HttpCredentials = {}
-        self._geolocation: Geolocation = {}
-        self._timezone_id: str = ''
-        self._locale: str = 'en-US'
-        self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = None
-        self._java_script_enabled: bool = True
+        self._headers: dict[str, str] = {}
         self._capture_timeout: int = self._default_timeout
-        self._proxy: ProxySettings = {}
 
         # ###
 
@@ -199,19 +181,26 @@ class Capture():
         self.remote_headfull = capture_settings.remote_headfull
         self._init_script = capture_settings.init_script
 
+        self._proxy: dict[str, str] | None = None
+        if capture_settings.proxy:
+            if isinstance(capture_settings.proxy, ProxySettings):
+                self._proxy = capture_settings.proxy.model_dump(exclude_none=True)
+            else:
+                # The legacy option to pass 'force_tor', should have been transformed before we get here
+                self.logger.error(f'Incorrect value for the proxy: {capture_settings.proxy}')
+
         self.headers = capture_settings.headers
-        self.cookies = [c.model_dump(exclude_none=True) for c in capture_settings.cookies] if capture_settings.cookies else None
-        self.storage = capture_settings.storage
-        self.viewport = capture_settings.viewport.model_dump(exclude_none=True) if capture_settings.viewport else None
-        self.user_agent = capture_settings.user_agent
-        self.http_credentials = capture_settings.http_credentials.model_dump(exclude_none=True) if capture_settings.http_credentials else None
-        self.geolocation = capture_settings.geolocation.model_dump(exclude_none=True) if capture_settings.geolocation else None
-        self.timezone_id = capture_settings.timezone_id
-        self.locale = capture_settings.locale
-        self.color_scheme = capture_settings.color_scheme
-        self.java_script_enabled = capture_settings.java_script_enabled
+        self._cookies: list[dict[str, Any]] = [cookie.model_dump(exclude_none=True) for cookie in capture_settings.cookies] if capture_settings.cookies else []
+        self._storage: dict[str, Any] | None = capture_settings.storage.model_dump(exclude_none=True) if capture_settings.storage else None
+        self._viewport: dict[str, int] | None = capture_settings.viewport.model_dump(exclude_none=True) if capture_settings.viewport else None
+        self._user_agent: str = capture_settings.user_agent if capture_settings.user_agent else ''
+        self._http_credentials: dict[str, str] | None = capture_settings.http_credentials.model_dump(exclude_none=True) if capture_settings.http_credentials else None
+        self._geolocation: dict[str, float] | None = capture_settings.geolocation.model_dump(exclude_none=True) if capture_settings.geolocation else None
+        self._timezone_id = str(capture_settings.timezone_id) if capture_settings.timezone_id else None
+        self._locale: str = capture_settings.locale if capture_settings.locale else 'en-US'
+        self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = capture_settings.color_scheme if capture_settings.color_scheme else None
+        self._java_script_enabled: bool = capture_settings.java_script_enabled
         self.capture_timeout = capture_settings.general_timeout_in_sec
-        self.proxy = capture_settings.proxy
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
@@ -236,8 +225,8 @@ class Capture():
         if env:
             self._env.update(env)
 
-    def __prepare_proxy_aiohttp(self, proxy: ProxySettings) -> str:
-        if 'username' in proxy and 'password' in proxy:
+    def __prepare_proxy_aiohttp(self, proxy: dict[str, str]) -> str:
+        if proxy.get('username') and proxy.get('password'):
             splitted = urlsplit(proxy['server'])
             return urlunsplit((splitted.scheme, f'{proxy["username"]}:{proxy["password"]}@{splitted.netloc}', splitted.path, splitted.query, splitted.fragment))
         return proxy['server']
@@ -283,7 +272,7 @@ class Capture():
             launch_env = {**os.environ, **self._env}
 
         self.browser = await self.playwright[self.browser_name].launch(
-            proxy=self.proxy if self.proxy else None,
+            proxy=self._proxy,  # type: ignore[arg-type]
             channel="chromium" if self.browser_name == "chromium" else None,
             args=args,
             headless=self.headless,
@@ -457,36 +446,13 @@ class Capture():
         page.on("console", handle_console_msg)
         return page
 
-    def __prepare_proxy_playwright(self, proxy: str) -> ProxySettings:
-        splitted = urlsplit(proxy)
-        if splitted.username and splitted.password:
-            return {'username': splitted.username, 'password': splitted.password,
-                    'server': urlunsplit((splitted.scheme, f'{splitted.hostname}:{splitted.port}', splitted.path, splitted.query, splitted.fragment))}
-        return {'server': proxy}
-
-    @property
-    def proxy(self) -> ProxySettings:
-        return self._proxy
-
-    @proxy.setter
-    def proxy(self, proxy: str | dict[str, str] | None) -> None:
-        if proxy:
-            if isinstance(proxy, str):
-                self._proxy = self.__prepare_proxy_playwright(proxy)
-            elif isinstance(proxy, dict):
-                self._proxy = {'server': proxy['server'],
-                               'bypass': proxy.get('bypass', ''),
-                               'username': proxy.get('username', ''),
-                               'password': proxy.get('password', '')}
-            else:
-                raise InvalidPlaywrightParameter(f'Invalid proxy parameter: "{proxy}" ({type(proxy)})')
-
     @property
     def capture_timeout(self) -> int:
         return self._capture_timeout
 
     @capture_timeout.setter
     def capture_timeout(self, timeout: int | None) -> None:
+        # NOTE: This check is relevant, and needs to happen there
         if not timeout:
             self._capture_timeout = self._default_timeout
         else:
@@ -497,101 +463,12 @@ class Capture():
                 self._capture_timeout = timeout
 
     @property
-    def locale(self) -> str:
-        return self._locale
-
-    @locale.setter
-    def locale(self, locale: str | None) -> None:
-        if locale:
-            self._locale = locale
-
-    @property
-    def timezone_id(self) -> str:
-        return self._timezone_id
-
-    @timezone_id.setter
-    def timezone_id(self, timezone_id: str | None) -> None:
-        if not timezone_id:
-            return
-        if timezone_id in all_timezones_set:
-            self._timezone_id = timezone_id
-        else:
-            raise InvalidPlaywrightParameter(f'The Timezone ID provided ({timezone_id}) is invalid.')
-
-    @property
-    def http_credentials(self) -> HttpCredentials:
-        return self._http_credentials
-
-    @http_credentials.setter
-    def http_credentials(self, credentials: dict[str, str] | None) -> None:
-        if not credentials:
-            return
-        if 'username' in credentials and 'password' in credentials:
-            self._http_credentials = {'username': credentials['username'],
-                                      'password': credentials['password']}
-            if 'origin' in credentials:
-                self._http_credentials['origin'] = credentials['origin']
-        else:
-            raise InvalidPlaywrightParameter(f'At least a username and a password are required in the credentials: {credentials}')
-
-    def set_http_credentials(self, username: str, password: str, origin: str | None=None) -> None:
-        self._http_credentials = {'username': username, 'password': password, 'origin': origin}
-
-    @property
-    def geolocation(self) -> Geolocation:
-        return self._geolocation
-
-    @geolocation.setter
-    def geolocation(self, geolocation: dict[str, str | int | float] | None) -> None:
-        if not geolocation:
-            return
-        if 'latitude' in geolocation and 'longitude' in geolocation:
-            self._geolocation = {'latitude': float(geolocation['latitude']),
-                                 'longitude': float(geolocation['longitude'])}
-            if 'accuracy' in geolocation:
-                self._geolocation['accuracy'] = float(geolocation['accuracy'])
-        else:
-            raise InvalidPlaywrightParameter(f'At least a latitude and a longitude are required in the geolocation: {geolocation}')
-
-    @property
-    def cookies(self) -> list[Cookie]:
-        return self._cookies
-
-    @cookies.setter
-    def cookies(self, cookies: list[Cookie | dict[str, Any]] | None) -> None:
-        '''Cookies to send along to the initial request.
-
-        :param cookies: The cookies, in this format: https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies
-        '''
-        if not cookies:
-            return
-        for raw_cookie in cookies:
-            if not raw_cookie:
-                continue
-            if isinstance(raw_cookie, Cookie):
-                self._cookies.append(raw_cookie)
-                continue
-            try:
-                self._cookies.append(Cookie.model_validate(raw_cookie))
-            except Exception as e:
-                self.logger.warning(f'Invalid cookie: {e}')
-
-    @property
-    def storage(self) -> StorageState:
-        return self._storage
-
-    @storage.setter
-    def storage(self, storage: dict[str, Any] | None) -> None:
-        if storage and 'cookies' in storage and 'origins' in storage:
-            self._storage['cookies'] = storage['cookies']
-            self._storage['origins'] = storage['origins']
-
-    @property
-    def headers(self) -> Headers:
+    def headers(self) -> dict[str, str]:
         return self._headers
 
     @headers.setter
     def headers(self, headers: dict[str, str] | None) -> None:
+        # NOTE: this is probably superseeded by the models, need to check that
         if not headers:
             return
         if isinstance(headers, dict):
@@ -616,64 +493,18 @@ class Capture():
                 continue
             self._headers[name] = value
 
-    @property
-    def viewport(self) -> ViewportSize | None:
-        return self._viewport
-
-    @viewport.setter
-    def viewport(self, viewport: dict[str, str | int] | None) -> None:
-        if not viewport:
-            return
-        if 'width' in viewport and 'height' in viewport:
-            self._viewport = {'width': int(viewport['width']), 'height': int(viewport['height'])}
-        else:
-            raise InvalidPlaywrightParameter(f'A viewport must have a height and a width - {viewport}')
-
-    @property
-    def user_agent(self) -> str:
-        return self._user_agent
-
-    @user_agent.setter
-    def user_agent(self, user_agent: str | None) -> None:
-        if user_agent is not None:
-            self._user_agent = user_agent
-
-    @property
-    def color_scheme(self) -> Literal['dark', 'light', 'no-preference', 'null'] | None:
-        return self._color_scheme
-
-    @color_scheme.setter
-    def color_scheme(self, color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None) -> None:
-        if not color_scheme:
-            return
-        schemes = ['light', 'dark', 'no-preference', 'null']
-        if color_scheme in schemes:
-            self._color_scheme = color_scheme
-        else:
-            raise InvalidPlaywrightParameter(f'Invalid color scheme ({color_scheme}), must be in {", ".join(schemes)}.')
-
-    @property
-    def java_script_enabled(self) -> bool:
-        return self._java_script_enabled
-
-    @java_script_enabled.setter
-    def java_script_enabled(self, enabled: bool) -> None:
-        self._java_script_enabled = enabled
-
     async def initialize_context(self) -> None:
         device_context_settings = {}
+        vp: dict[str, int] | None = None
         if self.device_name:
             device_context_settings = self.playwright.devices[self.device_name]
             # We need to make sure the device_context_settings dict doesn't contains
             # keys that are set by default in the context creation
-            if context_ua := device_context_settings.pop('user_agent', None):
-                ua = self.user_agent if self.user_agent else context_ua
-            if context_vp := device_context_settings.pop('viewport', self._default_viewport):
-                # Always true, but we also always want to pop it.
-                vp = self.viewport if self.viewport else context_vp
+            ua = device_context_settings.pop('user_agent', self._user_agent)
+            vp = device_context_settings.pop('viewport', self._viewport)
         else:
-            ua = self.user_agent
-            vp = self.viewport
+            ua = self._user_agent
+            vp = self._viewport
 
         # NOTE 2026-04-10: Very specific edge case:
         # * capture in remote headfull mode with xpra
@@ -690,14 +521,14 @@ class Capture():
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
             bypass_csp=True,
-            java_script_enabled=self.java_script_enabled,
-            http_credentials=self.http_credentials if self.http_credentials else None,
+            java_script_enabled=self._java_script_enabled,
+            http_credentials=self._http_credentials,  # type: ignore[arg-type]
             user_agent=ua,
-            locale=self.locale if self.locale else None,
-            timezone_id=self.timezone_id if self.timezone_id else None,
-            color_scheme=self.color_scheme if self.color_scheme else None,
-            viewport=vp,
-            storage_state=self.storage if self.storage else None,
+            locale=self._locale,
+            timezone_id=self._timezone_id,
+            color_scheme=self._color_scheme,
+            viewport=vp if vp else self._default_viewport,  # type: ignore[arg-type]
+            storage_state=self._storage,  # type: ignore[arg-type]
             # For debug only
             # record_video_dir='./videos/',
             **device_context_settings
@@ -754,11 +585,11 @@ class Capture():
                # 'script_logging': True,
                })
 
-        if self.cookies:
+        if self._cookies:
             try:
-                await self.context.add_cookies([c.model_dump(exclude_none=True) for c in self.cookies])  # type: ignore[misc]
+                await self.context.add_cookies(self._cookies)  # type: ignore[arg-type]
             except Exception:
-                self.logger.exception(f'Unable to set cookies: {self.cookies}')
+                self.logger.exception(f'Unable to set cookies: {self._cookies}')
 
         if self.headers:
             try:
@@ -766,8 +597,8 @@ class Capture():
             except Exception:
                 self.logger.exception(f'Unable to set HTTP Headers: {self.headers}')
 
-        if self.geolocation:
-            await self.context.set_geolocation(self.geolocation)
+        if self._geolocation:
+            await self.context.set_geolocation(self._geolocation)  # type: ignore[arg-type]
 
         # NOTE: Which perms are supported by which browsers varies
         # See https://github.com/microsoft/playwright/issues/16577
@@ -1188,6 +1019,47 @@ class Capture():
         await self._safe_wait(page)
         self.logger.debug('Done with waiting.')
 
+    async def _safe_get_storage_state(self, errors: list[str]) -> dict[str, Any]:
+        # Collect storage state, including IndexedDB, to capture the full browser state.
+        # 2026-09-08: add WebAuth credentials
+        # 2026-09-17: Add opfs
+        # Quite a few captures fail either on opfs or on indexed db, so we hav a few fallbacks
+        to_store = {'indexed_db': True, 'opfs': True, 'credentials': True}
+        while True:
+            try:
+                async with timeout(15):
+                    return await self.context.storage_state(**to_store)  # type: ignore[return-value,arg-type]
+            except (TimeoutError, asyncio.TimeoutError):
+                self.logger.warning("Unable to get storage (timeout).")
+                errors.append("Unable to get the storage (timeout).")
+                self.should_retry = True
+                break
+            except Error as e:
+                if to_store['indexed_db'] and 'IndexedDB' in str(e):
+                    to_store['indexed_db'] = False
+                    errors.append('Unable to get the IndexedDB')
+                    self.logger.warning(f"Unable to get the IndexedDB: {e}")
+                    continue
+                if to_store['opfs'] and 'OPFS' in str(e):
+                    to_store['opfs'] = False
+                    errors.append('Unable to get the OPFS')
+                    self.logger.warning(f"Unable to get the OPFS: {e}")
+                    continue
+
+                if not to_store['indexed_db'] and not to_store['opfs']:
+                    # we disabled both options, quit
+                    self.should_retry = True
+                    errors.append(f'Unable to get the storage at all: {e}')
+                    self.logger.warning(f"Unable to get the storage at all: {e}")
+                    break
+            except Exception as e:
+                # When the driver explodes for no clear reason.
+                self.logger.warning(f"[Generic Exception] Unable to get the storage: {e}")
+                errors.append(f'[Generic Exception] Unable to get the storage: {e}')
+                self.should_retry = True
+                break
+        return {}
+
     async def _finalize_capture(
         self,
         *,
@@ -1237,24 +1109,7 @@ class Capture():
             errors.append(f'[Generic Exception] Unable to get the cookies: {e}')
             self.should_retry = True
 
-        # Collect storage state, including IndexedDB, to capture the full browser state.
-        # 2026-09-08: add WebAuth credentials
-        try:
-            async with timeout(15):
-                to_return['storage'] = await self.context.storage_state(indexed_db=True, credentials=True)
-        except (TimeoutError, asyncio.TimeoutError):
-            self.logger.warning("Unable to get storage (timeout).")
-            errors.append("Unable to get the storage (timeout).")
-            self.should_retry = True
-        except Error as e:
-            self.logger.warning(f"Unable to get the storage: {e}")
-            errors.append(f'Unable to get the storage: {e}')
-            self.should_retry = True
-        except Exception as e:
-            # When the driver explodes for no clear reason.
-            self.logger.warning(f"[Generic Exception] Unable to get the storage: {e}")
-            errors.append(f'[Generic Exception] Unable to get the storage: {e}')
-            self.should_retry = True
+        to_return['storage'] = await self._safe_get_storage_state(errors)
 
         try:
             if page.is_closed():
@@ -1304,8 +1159,8 @@ class Capture():
             # When using a socks5 proxy, post-process the HAR to resolve IPs via
             # the proxy so the stored HAR contains addresses consistent with what
             # the proxy saw.
-            if (to_return.get('har') and self.proxy and self.proxy.get('server')
-                    and self.proxy['server'].startswith('socks5')):
+            if (to_return.get('har') and self._proxy and self._proxy.get('server')
+                    and self._proxy['server'].startswith('socks5')):
                 if har := to_return['har']:  # Could be None
                     try:
                         async with timeout(120):
@@ -1754,8 +1609,8 @@ class Capture():
         trusted_timestamps: dict[str, bytes] = {}
 
         connector = None
-        if self.proxy and self.proxy.get('server'):
-            connector = ProxyConnector.from_url(self.proxy['server'])
+        if self._proxy and self._proxy.get('server'):
+            connector = ProxyConnector.from_url(self._proxy['server'])
 
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
@@ -1990,8 +1845,8 @@ class Capture():
         await main_frame.get_by_role("button", name="Get an audio challenge").click()
 
         connector = None
-        if self.proxy and self.proxy.get('server'):
-            connector = ProxyConnector.from_url(self.proxy['server'])
+        if self._proxy and self._proxy.get('server'):
+            connector = ProxyConnector.from_url(self._proxy['server'])
 
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
@@ -2316,9 +2171,9 @@ class Capture():
             return await handler(req)
 
         connector = None
-        if self.proxy:
+        if self._proxy:
             # NOTE 2024-05-17: switch to async to fetch, the lib uses socks5h by default
-            connector = ProxyConnector.from_url(self.__prepare_proxy_aiohttp(self.proxy))
+            connector = ProxyConnector.from_url(self.__prepare_proxy_aiohttp(self._proxy))
 
         extracted_favicons = self.__extract_favicons(rendered_content)
         if not extracted_favicons:
@@ -2327,7 +2182,7 @@ class Capture():
         to_fetch.add('/favicon.ico')
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-            session.headers['user-agent'] = self.user_agent
+            session.headers['user-agent'] = self._user_agent
             for u in to_fetch:
                 try:
                     self.logger.debug(f'Attempting to fetch favicon from {u}.')
@@ -2381,7 +2236,11 @@ class Capture():
     # We get the HAR file, iterate over the entries an update the IPs
 
     async def socks5_resolver(self, harfile: dict[str, Any]) -> None:
-        resolver = Socks5Resolver(logger=self.logger, socks5_proxy=self.proxy['server'],
+        if not self._proxy:
+            raise InvalidPlaywrightParameter('Proxy required for socks5_resolver.')
+
+        resolver = Socks5Resolver(logger=self.logger,
+                                  socks5_proxy=self._proxy['server'],
                                   dns_resolver=self.socks5_dns_resolver)
         # get all the hostnames from the HAR file
         hostnames = set()
