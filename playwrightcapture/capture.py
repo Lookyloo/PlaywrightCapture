@@ -18,7 +18,7 @@ from base64 import b64decode, b64encode
 from io import BytesIO
 from logging import LoggerAdapter, Logger
 from tempfile import NamedTemporaryFile
-from typing import Any, Literal, TYPE_CHECKING, overload
+from typing import Any, Literal, TYPE_CHECKING
 from collections.abc import Awaitable, Callable, MutableMapping
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs, unquote_plus
 from zipfile import ZipFile
@@ -201,6 +201,24 @@ class Capture():
         self._color_scheme: Literal['dark', 'light', 'no-preference', 'null'] | None = capture_settings.color_scheme if capture_settings.color_scheme else None
         self._java_script_enabled: bool = capture_settings.java_script_enabled
         self.capture_timeout = capture_settings.general_timeout_in_sec
+        self.allow_tracking = capture_settings.allow_tracking
+        self.rendered_hostname_only = capture_settings.rendered_hostname_only
+        self.with_screenshot = capture_settings.with_screenshot
+        self.with_favicon = capture_settings.with_favicon
+        self.with_trusted_timestamps = capture_settings.with_trusted_timestamps
+        self.capture_depth = capture_settings.depth
+        self.final_wait = capture_settings.final_wait
+
+        self.initial_url: str
+        if capture_settings.url:
+            # This url could be None in transit when the thing to capture is a file (so the models allows it)
+            # But at this stage, the value must have been set to the local path of the file,
+            # if it is none, the capture will for sure fail.
+            self.initial_url = capture_settings.url
+        else:
+            raise InvalidPlaywrightParameter('No URL provided, cannot capture.')
+
+        self.initial_referer = capture_settings.referer
 
         self.should_retry: bool = False
         self.__network_not_idle: int = 2  # makes sure we do not wait for network idle the max amount of time the capture is allowed to take
@@ -285,6 +303,9 @@ class Capture():
         # Create the temporary file to store the HAR content.
         self._temp_harfile = NamedTemporaryFile(delete=False, prefix="playwright_capture_har", suffix=".json")
 
+        # all the errors gathered during the capture
+        self.errors: list[str] = []
+
         return self
 
     async def __aexit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
@@ -315,7 +336,7 @@ class Capture():
             return False
         return True
 
-    async def setup_page_capture(self, *, allow_tracking: bool=False) -> Page:
+    async def setup_page_capture(self) -> Page:
         """Prepare a page for a single-page capture without changing capture semantics.
 
         This method preserves the existing per-page setup used by capture_page:
@@ -421,7 +442,7 @@ class Capture():
             except Error as e:
                 self.logger.warning(f'Failed at fetching PDF in headless chromium: {e}')
 
-        if allow_tracking:
+        if self.allow_tracking:
             # Add authorization clickthroughs
             await self.__dialog_didomi_clickthrough(page)
             await self.__dialog_onetrust_clickthrough(page)
@@ -884,7 +905,7 @@ class Capture():
         except Exception as e:
             self.logger.info(f'Error while moving time forward: {e}')
 
-    async def __instrumentation(self, page: Page, url: str, allow_tracking: bool, final_wait: int) -> None:
+    async def __instrumentation(self, page: Page, url: str) -> None:
         try:
             # NOTE: the clock must be installed after the page is loaded, otherwise it sometimes cause the complete capture to hang.
             await page.clock.install()
@@ -935,7 +956,7 @@ class Capture():
             await self._wait_for_random_timeout(page, 5)
             self.logger.debug('Keep going after moving mouse.')
 
-            if allow_tracking:
+            if self.allow_tracking:
                 await self._wait_for_random_timeout(page, 5)
                 # This event is required trigger the add_locator_handler
                 try:
@@ -1014,12 +1035,12 @@ class Capture():
 
         self.logger.debug('Done with instrumentation.')
         # Wait at least 5 sec after instrumentation
-        self.logger.debug(f'Waiting another {max(final_wait, 5)}s.')
-        await self._wait_for_random_timeout(page, max(final_wait, 5))
+        self.logger.debug(f'Waiting another {max(self.final_wait, 5)}s.')
+        await self._wait_for_random_timeout(page, max(self.final_wait, 5))
         await self._safe_wait(page)
         self.logger.debug('Done with waiting.')
 
-    async def _safe_get_storage_state(self, errors: list[str]) -> dict[str, Any]:
+    async def _safe_get_storage_state(self) -> dict[str, Any]:
         # Collect storage state, including IndexedDB, to capture the full browser state.
         # 2026-09-08: add WebAuth credentials
         # 2026-09-17: Add opfs
@@ -1031,31 +1052,31 @@ class Capture():
                     return await self.context.storage_state(**to_store)  # type: ignore[return-value,arg-type]
             except (TimeoutError, asyncio.TimeoutError):
                 self.logger.warning("Unable to get storage (timeout).")
-                errors.append("Unable to get the storage (timeout).")
+                self.errors.append("Unable to get the storage (timeout).")
                 self.should_retry = True
                 break
             except Error as e:
                 if to_store['indexed_db'] and 'IndexedDB' in str(e):
                     to_store['indexed_db'] = False
-                    errors.append('Unable to get the IndexedDB')
+                    self.errors.append('Unable to get the IndexedDB')
                     self.logger.warning(f"Unable to get the IndexedDB: {e}")
                     continue
                 if to_store['opfs'] and 'OPFS' in str(e):
                     to_store['opfs'] = False
-                    errors.append('Unable to get the OPFS')
+                    self.errors.append('Unable to get the OPFS')
                     self.logger.warning(f"Unable to get the OPFS: {e}")
                     continue
 
                 if not to_store['indexed_db'] and not to_store['opfs']:
                     # we disabled both options, quit
                     self.should_retry = True
-                    errors.append(f'Unable to get the storage at all: {e}')
+                    self.errors.append(f'Unable to get the storage at all: {e}')
                     self.logger.warning(f"Unable to get the storage at all: {e}")
                     break
             except Exception as e:
                 # When the driver explodes for no clear reason.
                 self.logger.warning(f"[Generic Exception] Unable to get the storage: {e}")
-                errors.append(f'[Generic Exception] Unable to get the storage: {e}')
+                self.errors.append(f'[Generic Exception] Unable to get the storage: {e}')
                 self.should_retry = True
                 break
         return {}
@@ -1065,8 +1086,6 @@ class Capture():
         *,
         page: Page,
         to_return: CaptureResponse,
-        errors: list[str],
-        with_trusted_timestamps: bool,
     ) -> None:
         """Common finalization logic for captures (downloads, cookies, storage, HAR, socks5, timestamps)."""
 
@@ -1097,19 +1116,19 @@ class Capture():
                 to_return['cookies'] = [Cookie.model_validate(c).model_dump(exclude_none=True) for c in await self.context.cookies()]
         except (TimeoutError, asyncio.TimeoutError):
             self.logger.warning("Unable to get cookies (timeout).")
-            errors.append("Unable to get the cookies (timeout).")
+            self.errors.append("Unable to get the cookies (timeout).")
             self.should_retry = True
         except Error as e:
             self.logger.warning(f"Unable to get cookies: {e}")
-            errors.append(f'Unable to get the cookies: {e}')
+            self.errors.append(f'Unable to get the cookies: {e}')
             self.should_retry = True
         except Exception as e:
             # When the driver explodes for no clear reason.
             self.logger.warning(f"[Generic Exception] Unable to get cookies: {e}")
-            errors.append(f'[Generic Exception] Unable to get the cookies: {e}')
+            self.errors.append(f'[Generic Exception] Unable to get the cookies: {e}')
             self.should_retry = True
 
-        to_return['storage'] = await self._safe_get_storage_state(errors)
+        to_return['storage'] = await self._safe_get_storage_state()
 
         try:
             if page.is_closed():
@@ -1167,14 +1186,14 @@ class Capture():
                             await self.socks5_resolver(har)
                     except (TimeoutError, asyncio.TimeoutError):
                         self.logger.warning("Unable to resolve all the IPs via the socks5 proxy.")
-                        errors.append("Unable to resolve all the IPs via the socks5 proxy.")
+                        self.errors.append("Unable to resolve all the IPs via the socks5 proxy.")
                         self.should_retry = True
 
         except (TimeoutError, asyncio.TimeoutError):
             # If closing the context or generating the HAR takes too long, the
             # capture is considered incomplete but we still return what we have.
             self.logger.warning("[Timeout] Unable to close context at the end of the capture.")
-            errors.append("[Timeout] Unable to close context at the end of the capture.")
+            self.errors.append("[Timeout] Unable to close context at the end of the capture.")
             self.should_retry = True
             # In case of timeout, let the exception reach the async calls
             await asyncio.sleep(1)
@@ -1182,11 +1201,11 @@ class Capture():
             # Any other unexpected failure while finalizing the capture is logged
             # and surfaced as a generic HAR-generation error.
             self.logger.warning(f"Other exception while finishing up the capture: {e}.")
-            errors.append(f'Unable to generate HAR file: {e}')
+            self.errors.append(f'Unable to generate HAR file: {e}')
 
-        if errors:
-            to_return['error'] = '\n'.join(errors)
-        if with_trusted_timestamps:
+        if self.errors:
+            to_return['error'] = '\n'.join(self.errors)
+        if self.with_trusted_timestamps:
             try:
                 await self._get_trusted_timestamps(to_return)
             except Exception as e:
@@ -1237,7 +1256,11 @@ class Capture():
         self.logger.warning(f"Opening a weird URL: {url}")
         return False, f"Attempted to open a weird URL '{url}', blocked."
 
-    async def open_page(self, page: Page, url: str, errors: list[str], referer: str | None=None) -> None:
+    async def open_page(self, page: Page, url: str | None = None, referer: str | None=None) -> None:
+        """This method opens the page but does nothing with it. Use it only if you need a custom instrumentation.
+        The usecase in lookyloo's context is to have a headfull capture in Xpra.
+        Prefer using `capture_page` instead.
+        """
 
         async def catch_file_route(route: Route, request: Request) -> None:
             if unquote(request.url) == url:
@@ -1280,9 +1303,10 @@ class Capture():
             ]
             for scheme in allowed_schemes:
                 await page.route(scheme, lambda route: route.continue_())
-
+        if not url:
+            url = self.initial_url
         try:
-            await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else '')
+            await page.goto(url, wait_until='domcontentloaded', referer=referer if referer else self.initial_referer)
             try:
                 await page.bring_to_front()
                 self.logger.debug('Page moved to front.')
@@ -1298,7 +1322,7 @@ class Capture():
                 try:
                     async with page.expect_download() as download_info:
                         try:
-                            await page.goto(url, referer=referer if referer else '')
+                            await page.goto(url, referer=referer if referer else self.initial_referer)
                         except Exception:
                             pass
                         with NamedTemporaryFile() as tmp_f:
@@ -1316,7 +1340,7 @@ class Capture():
                         error_msg = download.failure()
                         if not error_msg:
                             raise e
-                        errors.append(f"Error while downloading: {error_msg}")
+                        self.errors.append(f"Error while downloading: {error_msg}")
                         self.logger.info(f'Error while downloading: {error_msg}')
                         self.should_retry = True
                     except Exception:
@@ -1326,44 +1350,10 @@ class Capture():
         else:
             await self._wait_for_random_timeout(page, 5)  # Wait 5 sec after document loaded
 
-    @overload
-    async def capture_page(self, url: str, *, max_depth_capture_time: int,
-                           referer: str | None=None,
-                           page: Page | None=None, depth: int=0,
-                           rendered_hostname_only: bool=True,
-                           with_screenshot: bool=True,
-                           with_favicon: bool=False,
-                           allow_tracking: bool=False,
-                           with_trusted_timestamps: bool=False,
-                           current_page_only: bool=False,
-                           final_wait: int=5
-                           ) -> CaptureResponse:
-        ...
-
-    @overload
-    async def capture_page(self, url: None=None, *, max_depth_capture_time: int,
-                           referer: str | None=None,
-                           page: Page, depth: int=0,
-                           rendered_hostname_only: bool=True,
-                           with_screenshot: bool=True,
-                           with_favicon: bool=False,
-                           allow_tracking: bool=False,
-                           with_trusted_timestamps: bool=False,
-                           current_page_only: bool=False,
-                           final_wait: int=5
-                           ) -> CaptureResponse:
-        ...
-
     async def capture_page(self, url: str | None=None, *, max_depth_capture_time: int,
                            referer: str | None=None,
-                           page: Page | None=None, depth: int=0,
-                           rendered_hostname_only: bool=True,
-                           with_screenshot: bool=True,
-                           with_favicon: bool=False,
-                           allow_tracking: bool=False,
-                           with_trusted_timestamps: bool=False,
+                           page: Page | None=None, depth: int | None = None,
                            current_page_only: bool=False,
-                           final_wait: int=5,
                            ) -> CaptureResponse:
         """Capture a URL and optionally recurse into child links.
 
@@ -1376,10 +1366,11 @@ class Capture():
         (no navigation, no recursion) and then finalizes.  This is the path
         used by remote headfull captures after setup_page_capture has already been
         called by the caller.
+
+        The `url` field is only needed when the URL to capture isn't the initial one (depth>0)
         """
 
         to_return: CaptureResponse = {}
-        errors: list[str] = []
         capturing_sub = False
 
         if current_page_only:
@@ -1388,7 +1379,7 @@ class Capture():
                 raise InvalidPlaywrightParameter('current_page_only requires an initialized page')
         else:
             if page is None:
-                page = await self.setup_page_capture(allow_tracking=allow_tracking)
+                page = await self.setup_page_capture()
             else:
                 # Automated capture with depth > 0
                 capturing_sub = True
@@ -1397,12 +1388,13 @@ class Capture():
             if not current_page_only:
                 # Standard navigation + capture path.
                 if not url:
-                    raise InvalidPlaywrightParameter('The URL to capture is missing.')
-                await self.open_page(page, url, errors, referer)
+                    url = self.initial_url
+                await self.open_page(page, url=url if url else self.initial_url,
+                                     referer=referer if referer else self.initial_referer)
 
                 try:
                     if self.headless:
-                        await self.__instrumentation(page, url, allow_tracking, final_wait)
+                        await self.__instrumentation(page, url)
                     else:
                         self.logger.debug('Headed mode, skipping instrumentation.')
                         await self._wait_for_random_timeout(page, self._capture_timeout - 5)
@@ -1436,7 +1428,7 @@ class Capture():
                         u = '/!\\ Unknown /!\\'
                     to_return['last_redirected_url'] = u
 
-            if 'html' in to_return and to_return['html'] is not None and with_favicon:
+            if 'html' in to_return and to_return['html'] is not None and self.with_favicon:
                 # We're probably (?) safe only looking for favicons in the main frame.
                 # TODO: check that?
                 try:
@@ -1447,7 +1439,7 @@ class Capture():
                 except Exception as e:
                     self.logger.warning(f'Unable to get favicons: {e}')
 
-            if with_screenshot:
+            if self.with_screenshot:
                 to_return['png'] = await self._failsafe_get_screenshot(page)
 
             # Keep that all the way down there in case the capture failed.
@@ -1456,11 +1448,15 @@ class Capture():
             else:
                 self._already_captured.add(page.url)
 
-            if depth > 0 and to_return.get('html') and to_return['html']:
+            if depth is None:
+                # fallback for the first call
+                depth = self.capture_depth
+
+            if depth is not None and depth > 0 and to_return.get('html') and to_return['html']:
                 # TODO with children frames:
                 # 1. if the frame has a URL, use that as base URL/referer for the subsequent captures
                 # 2. if it doesn't, the base URL is the url of the parent (which may or may not be the main frame)
-                if child_urls := self._get_links_from_rendered_page(page.url, to_return['html'], rendered_hostname_only):
+                if child_urls := self._get_links_from_rendered_page(page.url, to_return['html']):
                     to_return['children'] = []
                     depth -= 1
                     total_urls = len(child_urls)
@@ -1486,11 +1482,8 @@ class Capture():
                                 child_capture = await self.capture_page(
                                     url=url, referer=page.url,
                                     page=page, depth=depth,
-                                    rendered_hostname_only=rendered_hostname_only,
-                                    max_depth_capture_time=max_capture_time,
-                                    with_screenshot=with_screenshot,
-                                    final_wait=final_wait)
-                                if with_trusted_timestamps:
+                                    max_depth_capture_time=max_capture_time)
+                                if self.with_trusted_timestamps:
                                     try:
                                         await self._get_trusted_timestamps(child_capture)
                                     except Exception as e:
@@ -1510,7 +1503,7 @@ class Capture():
                         if consecutive_errors >= 5:
                             # if we have more than 5 consecutive errors, the capture is most probably broken, breaking.
                             self.logger.warning('Got more than 5 consecutive errors while capturing children, breaking.')
-                            errors.append("Got more than 5 consecutive errors while capturing children")
+                            self.errors.append("Got more than 5 consecutive errors while capturing children")
                             self.should_retry = True
                             break
 
@@ -1522,19 +1515,19 @@ class Capture():
                             self.logger.info(f'Unable to go back: {e}.')
 
         except PlaywrightTimeoutError as e:
-            errors.append(f"The capture took too long - {e.message}")
+            self.errors.append(f"The capture took too long - {e.message}")
             self.should_retry = True
         except (asyncio.TimeoutError, TimeoutError):
-            errors.append("Something in the capture took too long")
+            self.errors.append("Something in the capture took too long")
             self.should_retry = True
         except TargetClosedError as e:
-            errors.append(f"The target was closed - {e}")
+            self.errors.append(f"The target was closed - {e}")
             self.should_retry = True
         except Error as e:
             # NOTE: there are a lot of errors that look like duplicates and they are triggered at different times in the process.
             # it is tricky to figure our which one should (and should not) trigger a retry. Below is our best guess and it will change over time.
             self._update_exceptions(e)
-            errors.append(e.message)
+            self.errors.append(e.message)
             to_return['error_name'] = e.name
             # NOTE: e.name is generally (always?) "Error"
             if self._fatal_network_error(e) or self._fatal_auth_error(e) or self.fatal_browser_error(e):
@@ -1542,7 +1535,7 @@ class Capture():
             elif self._retry_network_error(e) or self._retry_browser_error(e):
                 # this one sounds like something we can retry...
                 self.logger.info(f'Issue with {url} (retrying): {e.message}')
-                errors.append(f'Issue with {url}: {e.message}')
+                self.errors.append(f'Issue with {url}: {e.message}')
                 self.should_retry = True
             else:
                 # Unexpected ones
@@ -1550,15 +1543,15 @@ class Capture():
         except PlaywrightCaptureException as e:
             # unrecoverable exeptions
             self.logger.warning(f'Unable to run capture: {e}')
-            errors.append(f'Unable to run capture: {e}')
+            self.errors.append(f'Unable to run capture: {e}')
             raise e
         except Exception as e:
             # we may get a non-playwright exception to.
             # The ones we try to handle here should be treated as if they were.
-            errors.append(str(e))
+            self.errors.append(str(e))
             if str(e) in ['Connection closed while reading from the driver']:
                 self.logger.info(f'Issue with {url} (retrying): {e}')
-                errors.append(f'Issue with {url}: {e}')
+                self.errors.append(f'Issue with {url}: {e}')
                 self.should_retry = True
             else:
                 raise e
@@ -1569,8 +1562,6 @@ class Capture():
                 await self._finalize_capture(
                     page=page,
                     to_return=to_return,
-                    errors=errors,
-                    with_trusted_timestamps=with_trusted_timestamps,
                 )
         self.logger.debug('Capture done')
         return to_return
@@ -1756,7 +1747,7 @@ class Capture():
             return unquote(page.name)
         return None
 
-    def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str, rendered_hostname_only: bool) -> list[str]:
+    def _get_links_from_rendered_page(self, rendered_url: str, rendered_html: str) -> list[str]:
         def _sanitize(maybe_url: str) -> str | None:
             href = strip_html5_whitespace(maybe_url)
             href = safe_url_string(href)
@@ -1784,7 +1775,7 @@ class Capture():
                 continue
             try:
                 if href := _sanitize(href):
-                    if not rendered_hostname_only:
+                    if not self.rendered_hostname_only:
                         urls.add(href)
                     elif rendered_hostname and urlparse(href).hostname == rendered_hostname:
                         urls.add(href)
