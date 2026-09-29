@@ -17,7 +17,8 @@ import time
 from base64 import b64decode, b64encode
 from io import BytesIO
 from logging import LoggerAdapter, Logger
-from tempfile import NamedTemporaryFile
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any, Literal, TYPE_CHECKING
 from collections.abc import Awaitable, Callable, MutableMapping
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs, unquote_plus
@@ -101,6 +102,11 @@ class CaptureResponse(TypedDict, total=False):
     # favicon: Optional[bytes]
     # in the meantime, we need a workaround: https://github.com/Lookyloo/PlaywrightCapture/issues/45
     potential_favicons: set[bytes] | None
+
+    # If enabled, the capture will store videos and return them
+    # In a multi-page context, we might have more than one video. In that case, we do the same as for downloads: an archive
+    video_filename: str | None
+    video_file: bytes | None
 
 
 class PlaywrightCaptureLogAdapter(LoggerAdapter):  # type: ignore[type-arg]
@@ -204,6 +210,7 @@ class Capture():
         self.allow_tracking = capture_settings.allow_tracking
         self.rendered_hostname_only = capture_settings.rendered_hostname_only
         self.with_screenshot = capture_settings.with_screenshot
+        self.with_video = capture_settings.with_video
         self.with_favicon = capture_settings.with_favicon
         self.with_trusted_timestamps = capture_settings.with_trusted_timestamps
         self.capture_depth = capture_settings.depth
@@ -303,6 +310,11 @@ class Capture():
         # Create the temporary file to store the HAR content.
         self._temp_harfile = NamedTemporaryFile(delete=False, prefix="playwright_capture_har", suffix=".json")
 
+        # if the capture is triggered with video, create the directory
+        self._temp_video_dir: TemporaryDirectory[str] | None = None
+        if self.with_video:
+            self._temp_video_dir = TemporaryDirectory(delete=False, prefix="playwright_capture_video", ignore_cleanup_errors=True)
+
         # all the errors gathered during the capture
         self.errors: list[str] = []
 
@@ -325,11 +337,16 @@ class Capture():
             # this should't happen, but just in case it does...
             self.logger.info(f'Unable to stop playwright: {e}')
 
-        if hasattr(self, '_temp_harfile'):
+        try:
+            os.unlink(self._temp_harfile.name)
+        except Exception as e:
+            self.logger.warning(f'Unable to remove temp HAR file {self._temp_harfile.name}: {e}')
+
+        if self.with_video and self._temp_video_dir:
             try:
-                os.unlink(self._temp_harfile.name)
+                self._temp_video_dir.cleanup()
             except Exception as e:
-                self.logger.warning(f'Unable to remove temp HAR file {self._temp_harfile.name}: {e}')
+                self.logger.warning(f'Unable to remove temp video directory {self._temp_video_dir.name}: {e}')
 
         if exc_type:
             self.logger.warning(f'An exception occured during the capture: {exc_value}')
@@ -514,6 +531,18 @@ class Capture():
                 continue
             self._headers[name] = value
 
+    def __video_size(self, viewport: dict[str, int] | None) -> dict[str, int]:
+        if viewport is None:
+            viewport = self._default_viewport
+        pref_width = 1000
+        pref_height = 1000
+        pref_ratio = pref_width / pref_height
+        ratio = viewport['width'] / viewport['height']
+        if ratio > pref_ratio:
+            return {'width': pref_width, 'height': int(viewport['height'] * (pref_width / viewport['width']))}
+        else:
+            return {'width': int(viewport['width'] * (pref_height / viewport['height'])), 'height': pref_height}
+
     async def initialize_context(self) -> None:
         device_context_settings = {}
         vp: dict[str, int] | None = None
@@ -550,8 +579,8 @@ class Capture():
             color_scheme=self._color_scheme,
             viewport=vp if vp else self._default_viewport,  # type: ignore[arg-type]
             storage_state=self._storage,  # type: ignore[arg-type]
-            # For debug only
-            # record_video_dir='./videos/',
+            record_video_dir=self._temp_video_dir.name if self._temp_video_dir else None,
+            record_video_size=self.__video_size(vp) if self._temp_video_dir else None,  # type: ignore[arg-type]
             **device_context_settings
         )
         self.context.set_default_timeout(self._capture_timeout * 1000)
@@ -1175,6 +1204,24 @@ class Capture():
                 to_return['har'] = orjson.loads(_har.read())
             self.logger.debug('Got HAR.')
 
+            if self.with_video and self._temp_video_dir:
+                videos: list[tuple[str, bytes]] = []
+                for video_file in Path(self._temp_video_dir.name).iterdir():
+                    with video_file.open('rb') as _vf:
+                        videos.append((os.path.basename(video_file), _vf.read()))
+
+                if len(videos) == 1:
+                    to_return["video_filename"] = videos[0][0]
+                    to_return["video_file"] = videos[0][1]
+                else:
+                    mem_zip = BytesIO()
+                    to_return["video_filename"] = f'{self.uuid}_multiple_videos.zip'
+                    with ZipFile(mem_zip, 'w') as z:
+                        for i, f_details in enumerate(videos):
+                            filename, file_content = f_details
+                            z.writestr(f'{i}_{filename}', file_content)
+                    to_return["video_file"] = mem_zip.getvalue()
+
             # When using a socks5 proxy, post-process the HAR to resolve IPs via
             # the proxy so the stored HAR contains addresses consistent with what
             # the proxy saw.
@@ -1588,6 +1635,10 @@ class Capture():
             to_timestamp['downloaded_filename'] = TimestampRequestBuilder().data(downloaded_filename.encode())
         if downloaded_file := capture_response.get('downloaded_file'):
             to_timestamp['downloaded_file'] = TimestampRequestBuilder().data(downloaded_file)
+        if video_filename := capture_response.get('video_filename'):
+            to_timestamp['video_filename'] = TimestampRequestBuilder().data(video_filename.encode())
+        if video_file := capture_response.get('video_file'):
+            to_timestamp['video_file'] = TimestampRequestBuilder().data(video_file)
         # if potential_favicons := capture_response.get('potential_favicons'):
         #    to_timestamp['potential_favicons'] = TimestampRequestBuilder().data(potential_favicons)
 
@@ -1946,6 +1997,7 @@ class Capture():
                 'NS_ERROR_NET_ERROR_RESPONSE',
                 'NS_ERROR_NET_PARTIAL_TRANSFER',
                 'NS_ERROR_PARSED_DATA_CACHED',
+                'net::ERR_HTTP2_PROTOCOL_ERROR',
                 'net::ERR_CONNECTION_RESET',
                 'net::ERR_EMPTY_RESPONSE',
                 'net::ERR_INVALID_RESPONSE',
@@ -1981,7 +2033,6 @@ class Capture():
                 'net::ERR_CONNECTION_REFUSED',
                 'net::ERR_CONNECTION_TIMED_OUT',
                 'net::ERR_HTTP_RESPONSE_CODE_FAILURE',
-                'net::ERR_HTTP2_PROTOCOL_ERROR',
                 'net::ERR_INVALID_HTTP_RESPONSE',
                 'net::ERR_INVALID_REDIRECT',
                 'net::ERR_NAME_NOT_RESOLVED',
