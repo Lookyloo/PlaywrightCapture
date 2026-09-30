@@ -313,7 +313,7 @@ class Capture():
         # if the capture is triggered with video, create the directory
         self._temp_video_dir: TemporaryDirectory[str] | None = None
         if self.with_video:
-            self._temp_video_dir = TemporaryDirectory(delete=False, prefix="playwright_capture_video", ignore_cleanup_errors=True)
+            self._temp_video_dir = TemporaryDirectory(prefix="playwright_capture_video", ignore_cleanup_errors=True)
 
         # all the errors gathered during the capture
         self.errors: list[str] = []
