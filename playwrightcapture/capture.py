@@ -1069,12 +1069,17 @@ class Capture():
         await self._safe_wait(page)
         self.logger.debug('Done with waiting.')
 
-    async def _safe_get_storage_state(self) -> dict[str, Any]:
+    async def _safe_get_storage_state(self, page: Page) -> dict[str, Any]:
         # Collect storage state, including IndexedDB, to capture the full browser state.
         # 2026-09-08: add WebAuth credentials
         # 2026-09-17: Add opfs
+        # 2026-10-06: Do not try to get the OPFS from non-secure context, it always fails.
+        in_secure_context = any(page.url.startswith(b) for b in ['https://', 'file://', 'http://localhost'])
+        if not in_secure_context:
+            self.logger.info("Not in a secure context, skip OPFS.")
+
+        to_store = {'indexed_db': True, 'opfs': in_secure_context, 'credentials': True}
         # Quite a few captures fail either on opfs or on indexed db, so we hav a few fallbacks
-        to_store = {'indexed_db': True, 'opfs': True, 'credentials': True}
         while True:
             try:
                 async with timeout(15):
@@ -1157,7 +1162,7 @@ class Capture():
             self.errors.append(f'[Generic Exception] Unable to get the cookies: {e}')
             self.should_retry = True
 
-        to_return['storage'] = await self._safe_get_storage_state()
+        to_return['storage'] = await self._safe_get_storage_state(page)
 
         try:
             if page.is_closed():
