@@ -571,6 +571,7 @@ class Capture():
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
             bypass_csp=True,
+            no_viewport=True,  # Allows resize in headfull mode.
             java_script_enabled=self._java_script_enabled,
             http_credentials=self._http_credentials,  # type: ignore[arg-type]
             user_agent=ua,
