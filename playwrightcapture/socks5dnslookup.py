@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import sys
 
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,14 @@ import dns
 
 from dns.asyncresolver import Resolver
 from dns.resolver import Cache
-from dns._asyncio_backend import _maybe_wait_for, StreamSocket, Backend
+from dns._asyncio_backend import _maybe_wait_for, Backend
+if sys.version_info < (3, 11):
+    # version('dnspython') == '2.8.0'
+    from dns._asyncio_backend import StreamSocket as _StreamSocket
+else:
+    # Prepare for dnspython 2.9, discard support for 2.8 as soon as possible
+    from dns._asyncio_backend import _StreamSocket
+
 from python_socks.async_.asyncio import Proxy
 
 
@@ -59,7 +67,7 @@ class Socks5Backend(Backend):
                 ),
                 timeout,
             )
-            return StreamSocket(af, r, w)  # type: ignore[no-untyped-call]
+            return _StreamSocket(af, r, w)  # type: ignore[no-untyped-call]
         raise NotImplementedError(
             "unsupported socket " + f"type {socktype}"
         )  # pragma: no cover
