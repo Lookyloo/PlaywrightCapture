@@ -546,45 +546,35 @@ class Capture():
     async def initialize_context(self) -> None:
         device_context_settings = {}
         vp: dict[str, int] | None = None
-        no_viewport = True
         if self.device_name:
             device_context_settings = self.playwright.devices[self.device_name]
             # We need to make sure the device_context_settings dict doesn't contains
             # keys that are set by default in the context creation
             ua = device_context_settings.pop('user_agent', self._user_agent)
             vp = device_context_settings.pop('viewport', self._viewport)
-            # NOTE 2026-10-13: cannot set no_viewport if either scale factor or ismobile are set:
-            # https://github.com/microsoft/playwright/blob/a3401cfe0dcf317101572d025fa46248d0779b42/packages/playwright-core/src/server/browserContext.ts#L755
-            if 'device_scale_factor' in device_context_settings or 'is_mobile' in device_context_settings:
-                no_viewport = False
         else:
             ua = self._user_agent
-            vp = self._viewport
-
-        # NOTE 2026-04-10: Very specific edge case:
-        # * capture in remote headfull mode with xpra
-        # * the browser is webkit
-        # => setting a viewport fails with (possibly related to x11?):
-        # BrowserContext.new_page: Protocol error (Emulation.setDeviceMetricsOverride): Failed to resize window
-        # fun thing is that is seems to be working as expected with
-        # self._env.update({'DEBUG': 'pw:protocol'})
-        # Playwright bug: https://github.com/microsoft/playwright/issues/40149
-        # So skip the viewport for now, it's not a very big deal.
-        # if self.remote_headfull and self.browser_name == 'webkit':
-        #     vp = None
+            if self._viewport:
+                vp = self._viewport
+            elif self.headless:
+                vp = self._default_viewport
+            else:
+                # headfull mode and no viewport in the settings, vp is intentionally None
+                # no_viewport is then passed as True, allowing resizing.
+                pass
 
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
             bypass_csp=True,
-            no_viewport=no_viewport,  # Allows resize in headfull mode.
+            no_viewport=vp is None,  # Allows resize in headfull mode.
             java_script_enabled=self._java_script_enabled,
             http_credentials=self._http_credentials,  # type: ignore[arg-type]
             user_agent=ua,
             locale=self._locale,
             timezone_id=self._timezone_id,
             color_scheme=self._color_scheme,
-            viewport=vp if vp else self._default_viewport,  # type: ignore[arg-type]
+            viewport=vp,  # type: ignore[arg-type]
             storage_state=self._storage,  # type: ignore[arg-type]
             record_video_dir=self._temp_video_dir.name if self._temp_video_dir else None,
             record_video_size=self.__video_size(vp) if self._temp_video_dir else None,  # type: ignore[arg-type]
