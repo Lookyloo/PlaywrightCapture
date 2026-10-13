@@ -546,12 +546,17 @@ class Capture():
     async def initialize_context(self) -> None:
         device_context_settings = {}
         vp: dict[str, int] | None = None
+        no_viewport = True
         if self.device_name:
             device_context_settings = self.playwright.devices[self.device_name]
             # We need to make sure the device_context_settings dict doesn't contains
             # keys that are set by default in the context creation
             ua = device_context_settings.pop('user_agent', self._user_agent)
             vp = device_context_settings.pop('viewport', self._viewport)
+            # NOTE 2026-10-13: cannot set no_viewport if either scale factor or ismobile are set:
+            # https://github.com/microsoft/playwright/blob/a3401cfe0dcf317101572d025fa46248d0779b42/packages/playwright-core/src/server/browserContext.ts#L755
+            if 'device_scale_factor' in device_context_settings or 'is_mobile' in device_context_settings:
+                no_viewport = False
         else:
             ua = self._user_agent
             vp = self._viewport
@@ -565,13 +570,14 @@ class Capture():
         # self._env.update({'DEBUG': 'pw:protocol'})
         # Playwright bug: https://github.com/microsoft/playwright/issues/40149
         # So skip the viewport for now, it's not a very big deal.
-        if self.remote_headfull and self.browser_name == 'webkit':
-            vp = None
+        # if self.remote_headfull and self.browser_name == 'webkit':
+        #     vp = None
+
         self.context = await self.browser.new_context(
             record_har_path=self._temp_harfile.name,
             ignore_https_errors=True,
             bypass_csp=True,
-            no_viewport=True,  # Allows resize in headfull mode.
+            no_viewport=no_viewport,  # Allows resize in headfull mode.
             java_script_enabled=self._java_script_enabled,
             http_credentials=self._http_credentials,  # type: ignore[arg-type]
             user_agent=ua,
