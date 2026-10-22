@@ -1506,21 +1506,21 @@ files = [
 
 [[package]]
 name = "lookyloo-models"
-version = "0.4.7"
+version = "0.5.0"
 description = "All the Pydantic models used across Lookyloo"
 optional = false
-python-versions = "<4,>=3.10"
+python-versions = "<4,>=3.11"
 groups = ["main"]
 files = [
-    {file = "lookyloo_models-0.4.7-py3-none-any.whl", hash = "sha256:05592d02c4b08c4396c2255ad505ed3448b77e032dde7abe34f1b68123a2377f"},
-    {file = "lookyloo_models-0.4.7.tar.gz", hash = "sha256:0c59f070371accd5827f51aa43cec31c88807de0b316bb730c5af547028dc67b"},
+    {file = "lookyloo_models-0.5.0-py3-none-any.whl", hash = "sha256:f2540980268c9ffa268c9d2fbc941c5c60a30d608f9dae32df6bf52189b949bc"},
+    {file = "lookyloo_models-0.5.0.tar.gz", hash = "sha256:9302428ea66294e086536f2a1cc3f26684b6f34282aa3f7fe9c5ddc7babc48a3"},
 ]
 
 [package.dependencies]
 dateparser = ">=1.4"
-orjson = ">=3.12"
-pydantic = ">=2.13"
-pydantic-extra-types = ">=2.11.1"
+orjson = ">=3.13"
+pydantic = ">=2.14"
+pydantic-extra-types = ">=2.11"
 ua-parser = {version = ">=1.0", extras = ["regex"]}
 
 [[package]]
@@ -1963,10 +1963,7 @@ ast-serialize = ">=0.11.2,<1.0.0"
 librt = {version = ">=0.16.0", markers = "platform_python_implementation != \"PyPy\""}
 mypy_extensions = ">=1.0.0"
 pathspec = ">=1.0.0"
-typing_extensions = [
-    {version = ">=4.6.0", markers = "python_version < \"3.15\""},
-    {version = ">=4.14.0", markers = "python_version >= \"3.15\""},
-]
+typing_extensions = {version = ">=4.6.0", markers = "python_version < \"3.15\""}
 
 [package.extras]
 dmypy = ["psutil (>=4.0)"]
@@ -3636,5 +3633,5 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.11,<3.16"
-content-hash = "d97281701dd191aab369c95dfe4ecc9398492e38154938b4db6df7a91299b4d4"
+python-versions = ">=3.11,<3.15"
+content-hash = "991773f9fdeb51f247e66d6dd479ea7536b4e050338b3bf095a786fafeb003a2"
