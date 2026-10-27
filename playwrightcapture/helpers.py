@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from functools import cache
+import ipaddress
 import sys
 
 from collections import defaultdict
+from functools import cache
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
@@ -26,6 +28,22 @@ class PlaywrightDevice(TypedDict):
     is_mobile: bool
     has_touch: bool
     default_browser_type: str
+
+
+@cache
+def get_local_hostnames() -> set[str]:
+    to_return: set[str] = set()
+    hosts = Path('/etc/hosts')
+    if not hosts.exists():
+        return to_return
+    with hosts.open('r') as f:
+        # strip comments and empy lines
+        hostlines = [line.split('#', 1)[0].strip() for line in f.readlines() if line.split('#', 1)[0].strip()]
+    for line in hostlines:
+        ip, names = line.split(' ', 1)
+        if not ipaddress.ip_address(ip).is_global:
+            to_return.update([n.strip() for n in names.split() if n.strip()])
+    return to_return
 
 
 @cache

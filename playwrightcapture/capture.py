@@ -20,7 +20,7 @@ from logging import LoggerAdapter, Logger
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any, Literal, TYPE_CHECKING
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable, MutableMapping, Iterable
 from urllib.parse import urlparse, unquote, urljoin, urlsplit, urlunsplit, parse_qs, unquote_plus
 from zipfile import ZipFile
 
@@ -42,12 +42,10 @@ from w3lib.html import strip_html5_whitespace
 from w3lib.url import canonicalize_url, safe_url_string
 
 from .exceptions import UnknownPlaywrightBrowser, UnknownPlaywrightDevice, InvalidPlaywrightParameter, PlaywrightCaptureException
+from .helpers import get_local_hostnames
 from .socks5dnslookup import Socks5Resolver
 
-if sys.version_info < (3, 11):
-    from async_timeout import timeout
-else:
-    from asyncio import timeout
+from asyncio import timeout
 
 try:
     from pydub import AudioSegment
@@ -148,7 +146,9 @@ class Capture():
                  capture_settings: CaptureSettings,
                  tt_settings: TrustedTimestampSettings | None=None,
                  env: dict[str, str | float | bool] | None=None,
-                 only_global_lookup: bool=True):
+                 only_global_lookup: bool=True,
+                 custom_local_hostnames: Iterable[str] | None=None,
+                 custom_local_ips: Iterable[str] | None=None):
         """Captures a page with Playwright.
 
         :param loglevel: Python loglevel
@@ -157,6 +157,8 @@ class Capture():
         :param tt_settings: The trusted timestamp settings
         :param env: Optional env variables passed to the playwright process. For remote headfull captures, pass the DISPLAY env variable there
         :param only_global_lookup: If true, blocks all non-global lookups (local files, non-public IPs)
+        :param custom_local_hostnames: Custom local hostnames to block during the capture
+        :param custom_local_ips: Custom local IPs to block during the capture
         """
         master_logger = logging.getLogger('playwrightcapture')
         master_logger.setLevel(loglevel)
@@ -173,6 +175,8 @@ class Capture():
         self.logger: Logger | PlaywrightCaptureLogAdapter
         self.uuid = uuid
         self.only_global_lookup = only_global_lookup
+        self.blocked_hostnames = set(custom_local_hostnames) if custom_local_hostnames else {}
+        self.blocked_ips = set(custom_local_ips) if custom_local_ips else {}
         if self.uuid is not None:
             self.logger = PlaywrightCaptureLogAdapter(master_logger, {'uuid': self.uuid})
         else:
@@ -892,7 +896,7 @@ class Capture():
                         self.logger.info('Consent window found, clicking through.')
                         got_button = True
                         await frame.locator("button.button__acceptAll").click(timeout=2000)
-            except (TimeoutError, asyncio.TimeoutError) as e:
+            except TimeoutError as e:
                 self.logger.warning(f'Frame consent timeout: {e}')
 
             for label in labels_to_click:
@@ -903,7 +907,7 @@ class Capture():
                             self.logger.debug(f'Got button by label on frame: {label}')
                             await frame.get_by_label(label).click(timeout=1000)
                             break
-                except (TimeoutError, asyncio.TimeoutError) as e:
+                except TimeoutError as e:
                     self.logger.warning(f'Consent timeout (label {label}) : {e}')
 
                 try:
@@ -913,7 +917,7 @@ class Capture():
                             self.logger.debug(f'Got button by role on frame: {label}')
                             await frame.get_by_role("button", name=label).click(timeout=1000)
                             break
-                except (TimeoutError, asyncio.TimeoutError) as e:
+                except TimeoutError as e:
                     self.logger.warning(f'Frame consent timeout (button {label}): {e}')
         except Exception as e:
             self.logger.info(f'Issue with consent validation: {e}')
@@ -926,7 +930,7 @@ class Capture():
                 await page.clock.run_for(random.randint((time - 5) * 1000,
                                                         (time + 5) * 1000))
                 self.logger.debug(f'Moved time forward by ~{time}s.')
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             self.logger.info('Unable to move time forward.')
         except Exception as e:
             self.logger.info(f'Error while moving time forward: {e}')
@@ -962,7 +966,7 @@ class Capture():
                     self.logger.warning(f'Target closed while resolving captcha on {url}: {e}')
                 except Error as e:
                     self.logger.warning(f'Error while resolving captcha on {url}: {e}')
-                except (TimeoutError, asyncio.TimeoutError) as e:
+                except TimeoutError as e:
                     self.logger.warning(f'[Timeout] Error while resolving captcha on {url}: {e}')
                 except Exception as e:
                     self.logger.exception(f'General error with captcha solving on {url}: {e}')
@@ -976,7 +980,7 @@ class Capture():
                 async with timeout(5):
                     await page.mouse.move(x=random.uniform(300, 800), y=random.uniform(200, 500))
                     self.logger.debug('Moved mouse.')
-            except (asyncio.TimeoutError, TimeoutError):
+            except TimeoutError:
                 self.logger.debug('Moving the mouse caused a timeout.')
 
             await self._wait_for_random_timeout(page, 5)
@@ -1027,7 +1031,7 @@ class Capture():
                     self.logger.warning(f'Target closed, unable to go to fragment "{fragment}": {e}')
                 except Error as e:
                     self.logger.exception(f'Unable to go to fragment "{fragment}": {e}')
-                except (asyncio.TimeoutError, TimeoutError):
+                except TimeoutError:
                     self.logger.debug('Unable to scroll due to timeout')
                 except (asyncio.CancelledError):
                     self.logger.debug('Unable to scroll due to timeout, call canceled')
@@ -1046,7 +1050,7 @@ class Capture():
                     await self._wait_for_random_timeout(page, 3)
                     await page.keyboard.press('PageDown')
                     self.logger.debug('PageDown on keyboard')
-            except (asyncio.TimeoutError, TimeoutError):
+            except TimeoutError:
                 self.logger.debug('Using keyboard caused a timeout.')
             except Error as e:
                 self.logger.debug(f'Unable to use keyboard: {e}')
@@ -1081,7 +1085,7 @@ class Capture():
             try:
                 async with timeout(15):
                     return await self.context.storage_state(**to_store)  # type: ignore[return-value,arg-type]
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 self.logger.warning("Unable to get storage (timeout).")
                 self.errors.append("Unable to get the storage (timeout).")
                 self.should_retry = True
@@ -1145,7 +1149,7 @@ class Capture():
             async with timeout(15):
                 # The response must contain jsonable elements, use the model to normalize.
                 to_return['cookies'] = [Cookie.model_validate(c).model_dump(exclude_none=True) for c in await self.context.cookies()]
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             self.logger.warning("Unable to get cookies (timeout).")
             self.errors.append("Unable to get the cookies (timeout).")
             self.should_retry = True
@@ -1181,7 +1185,7 @@ class Capture():
                     async with timeout(3):
                         await self.context.set_offline(True)
                         self.logger.debug('Page offline.')
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     self.logger.debug("Unable switch offline.")
 
                 try:
@@ -1190,7 +1194,7 @@ class Capture():
                     async with timeout(5):
                         await page.close(reason="Closing the page because the capture finished.")
                         self.logger.debug('Page closed.')
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     self.logger.warning("Unable close page.")
 
             # Close the context to flush the HAR file to disk, then load it.
@@ -1233,12 +1237,12 @@ class Capture():
                     try:
                         async with timeout(120):
                             await self.socks5_resolver(har)
-                    except (TimeoutError, asyncio.TimeoutError):
+                    except TimeoutError:
                         self.logger.warning("Unable to resolve all the IPs via the socks5 proxy.")
                         self.errors.append("Unable to resolve all the IPs via the socks5 proxy.")
                         self.should_retry = True
 
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             # If closing the context or generating the HAR takes too long, the
             # capture is considered incomplete but we still return what we have.
             self.logger.warning("[Timeout] Unable to close context at the end of the capture.")
@@ -1274,6 +1278,9 @@ class Capture():
             return False, f"Missing host in URL '{url}', blocked."
         try:
             ip = ipaddress.ip_address(_url.host.try_into_ip())
+            if str(ip) in self.blocked_ips:
+                self.logger.warning(f"Attempt to open a custom blocked IP: {url}")
+                return False, f"Attempted to open {url}, blocked."
             if ip.is_global:
                 return True, "Global IP"
             # Non-global IP
@@ -1288,9 +1295,16 @@ class Capture():
             if not hostname:
                 self.logger.warning(f"Missing hostname: {url}")
                 return False, f"Missing hostname in URL '{url}', blocked."
+            elif str(hostname) in self.blocked_hostnames:
+                self.logger.warning(f"Attempt to open {hostname} (custom block): {url}")
+                return False, f"Attempted to open {hostname}, blocked."
             elif str(hostname) == 'localhost':
+                # NOTE: probsbly a duplicate from below
                 self.logger.warning(f"Attempt to open localhost: {url}")
                 return False, "Attempted to open localhost, blocked."
+            elif str(hostname) in get_local_hostnames():
+                self.logger.warning(f"Attempt to open {hostname} (local in /etc/hosts): {url}")
+                return False, f"Attempted to open {hostname}, blocked."
             elif suffix := hostname.suffix:
                 if str(suffix) == 'local':
                     # Got a local domain
@@ -1483,7 +1497,7 @@ class Capture():
                 try:
                     to_return['potential_favicons'] = await self.get_favicons(page.url, to_return['html'])
                     self.got_favicons = True
-                except (TimeoutError, asyncio.TimeoutError) as e:
+                except TimeoutError as e:
                     self.logger.warning(f'[Timeout] Unable to get favicons: {e}')
                 except Exception as e:
                     self.logger.warning(f'Unable to get favicons: {e}')
@@ -1538,7 +1552,7 @@ class Capture():
                                     except Exception as e:
                                         self.logger.warning(f'Unable to get the trusted timestamps for the clild capture : {e}.')
                                 to_return['children'].append(child_capture)  # type: ignore[union-attr]
-                        except (TimeoutError, asyncio.TimeoutError):
+                        except TimeoutError:
                             self.logger.info(f'Timeout error, took more than {max_capture_time}s. Unable to capture {url}.')
                             consecutive_errors += 1
                         except Exception as e:
@@ -1566,7 +1580,7 @@ class Capture():
         except PlaywrightTimeoutError as e:
             self.errors.append(f"The capture took too long - {e.message}")
             self.should_retry = True
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             self.errors.append("Something in the capture took too long")
             self.should_retry = True
         except TargetClosedError as e:
@@ -1675,7 +1689,7 @@ class Capture():
         try:
             async with timeout(15):
                 return await page.screenshot(full_page=True, timeout=10000)
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             self.logger.info("Screenshot of the full page got stuck, trying to scale it down.")
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to scale it down: {e}")
@@ -1683,7 +1697,7 @@ class Capture():
         try:
             async with timeout(35):
                 return await page.screenshot(full_page=True, scale="css", timeout=30000)
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             self.logger.info("Screenshot of the full page got stuck, trying to get the current viewport only.")
         except Error as e:
             self.logger.info(f"Capturing a screenshot of the full page failed, trying to get the current viewport only: {e}")
@@ -1691,7 +1705,7 @@ class Capture():
         try:
             async with timeout(10):
                 return await page.screenshot(scale="css", animations='disabled', caret='initial', timeout=5000)
-        except (TimeoutError, asyncio.TimeoutError) as e:
+        except TimeoutError as e:
             self.logger.info("Screenshot of the full page got stuck, unable to get any screenshot.")
             raise e
         except Error as e:
@@ -1717,7 +1731,7 @@ class Capture():
                 self.logger.debug('Scrolled down.')
             except Error as e:
                 self.logger.debug(f'Unable to scroll: {e}')
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 self.logger.debug('Unable to scroll due to timeout')
             except (asyncio.CancelledError):
                 self.logger.debug('Unable to scroll due to timeout, call canceled')
@@ -1762,13 +1776,13 @@ class Capture():
         while tries > 0:
             try:
                 await page.wait_for_load_state(state="domcontentloaded", timeout=5)
-            except (Error, TimeoutError, asyncio.TimeoutError):
+            except (Error, TimeoutError):
                 self.logger.debug('Frame not loaded yet, cannot get content.')
             else:
                 try:
                     async with timeout(10):
                         return await page.content()
-                except (Error, TimeoutError, asyncio.TimeoutError):
+                except (Error, TimeoutError):
                     self.logger.debug('Unable to get page content, trying again.')
                     # The frame is loaded, if we get no content there, only retry one more time.
                     tries -= 1
