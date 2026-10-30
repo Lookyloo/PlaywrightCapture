@@ -1462,7 +1462,8 @@ class Capture():
                         self.logger.debug('Headed mode, skipping instrumentation.')
                         await self._wait_for_random_timeout(page, self._capture_timeout - 5)
                 except Exception as e:
-                    self.logger.exception(f'Error during instrumentation: {e}')
+                    self.logger.warning(f'Error during instrumentation: {e}')
+                    raise e
 
             # ### --------------------------------------
             # NOTE 2025-11-12: disabling the offline setting as it doesn't seem
