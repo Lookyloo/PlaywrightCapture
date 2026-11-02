@@ -346,7 +346,7 @@ description = "LTS Port of Python audioop"
 optional = true
 python-versions = ">=3.13"
 groups = ["main"]
-markers = "extra == \"recaptcha\" and python_version >= \"3.13\""
+markers = "python_version >= \"3.13\" and extra == \"recaptcha\""
 files = [
     {file = "audioop_lts-0.2.2-cp313-abi3-macosx_10_13_universal2.whl", hash = "sha256:fd3d4602dc64914d462924a08c1a9816435a2155d74f325853c1f1ac3b2d9800"},
     {file = "audioop_lts-0.2.2-cp313-abi3-macosx_10_13_x86_64.whl", hash = "sha256:550c114a8df0aafe9a05442a1162dfc8fec37e9af1d625ae6060fed6e756f303"},
@@ -1124,14 +1124,14 @@ langdetect = ["langdetect (>=1.0.0)"]
 
 [[package]]
 name = "dnspython"
-version = "2.9.0"
+version = "2.9.1"
 description = "DNS toolkit"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "dnspython-2.9.0-py3-none-any.whl", hash = "sha256:9a4aedb833c3c1b49214d04d44d3032ab7a9135f7c1d29a549b4ff78fd82fda9"},
-    {file = "dnspython-2.9.0.tar.gz", hash = "sha256:b44dc6b18f07a8b1c56676a19fbfdb5209415b046a9cece286baafa87ff3f7f1"},
+    {file = "dnspython-2.9.1-py3-none-any.whl", hash = "sha256:7c81caf8de1ed57b8cfc7e0ad4f528a0b8ceace473c7eb946df195dc9def751f"},
+    {file = "dnspython-2.9.1.tar.gz", hash = "sha256:9a6d30e55f8dc63e6052597666112bff0586b95a2474a9deda03afbbf820d37a"},
 ]
 
 [package.extras]
@@ -3255,7 +3255,7 @@ description = "Standard library aifc redistribution. \"dead battery\"."
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"recaptcha\" and python_version >= \"3.13\""
+markers = "python_version >= \"3.13\" and extra == \"recaptcha\""
 files = [
     {file = "standard_aifc-3.13.0-py3-none-any.whl", hash = "sha256:f7ae09cc57de1224a0dd8e3eb8f73830be7c3d0bc485de4c1f82b4a7f645ac66"},
     {file = "standard_aifc-3.13.0.tar.gz", hash = "sha256:64e249c7cb4b3daf2fdba4e95721f811bde8bdfc43ad9f936589b7bb2fae2e43"},
@@ -3272,7 +3272,7 @@ description = "Standard library chunk redistribution. \"dead battery\"."
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"recaptcha\" and python_version >= \"3.13\""
+markers = "python_version >= \"3.13\" and extra == \"recaptcha\""
 files = [
     {file = "standard_chunk-3.13.0-py3-none-any.whl", hash = "sha256:17880a26c285189c644bd5bd8f8ed2bdb795d216e3293e6dbe55bbd848e2982c"},
     {file = "standard_chunk-3.13.0.tar.gz", hash = "sha256:4ac345d37d7e686d2755e01836b8d98eda0d1a3ee90375e597ae43aaf064d654"},
@@ -3646,4 +3646,4 @@ recaptcha = ["SpeechRecognition", "pydub-ng"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.16"
-content-hash = "70c3d984f18fa3cb213cd8227522d3db7701767c5188374792b7f02b149c85ed"
+content-hash = "f5512ac394e32919b1643839c115f0685d460abc6f3bf513cee1a00a69a887ce"
