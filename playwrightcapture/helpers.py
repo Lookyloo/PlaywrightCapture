@@ -40,7 +40,7 @@ def get_local_hostnames() -> set[str]:
         # strip comments and empy lines
         hostlines = [line.split('#', 1)[0].strip() for line in f.readlines() if line.split('#', 1)[0].strip()]
     for line in hostlines:
-        ip, names = line.split(' ', 1)
+        line.split(None, 1)
         if not ipaddress.ip_address(ip).is_global:
             to_return.update([n.strip() for n in names.split() if n.strip()])
     return to_return
