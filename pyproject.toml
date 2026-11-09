@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.43.4"
+version = "1.43.5"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.16"
 dynamic = [ "classifiers" ]
 
 dependencies = [
-    "playwright (>=1.64.1)",
+    "playwright (>=1.65.0)",
     "beautifulsoup4[charset-normalizer,lxml] (>=4.15.0)",
     "w3lib (>=2.6.0)",
     "playwright-stealth (>=2.0.3)",
