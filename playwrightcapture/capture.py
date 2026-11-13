@@ -1312,10 +1312,11 @@ class Capture():
                     return False, f"Attempted to open {url}, blocked."
             # NOTE: may want to add other things there, but do not want to trigger a domain resolution.
             return True, "Public hostname"
-        except ValueError:
+        except ValueError as e:
             # not an hostname
-            pass
-        # should not happen (should have an IP or a hostname
+            self.logger.warning(f"Couldn't parse URL ({url}), cannot find hostname: {e}")
+
+        # should not happen (should have an IP or a hostname)
         self.logger.warning(f"Opening a weird URL: {url}")
         return False, f"Attempted to open a weird URL '{url}', blocked."
 
