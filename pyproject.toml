@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.16"
 dynamic = [ "classifiers" ]
 
 dependencies = [
-    "playwright (>=1.65.1)",
+    "playwright (>=1.65.2)",
     "beautifulsoup4[charset-normalizer,lxml] (>=4.15.0)",
     "w3lib (>=2.6.0)",
     "playwright-stealth (>=2.0.3)",
