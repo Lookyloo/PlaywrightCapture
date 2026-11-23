@@ -1,6 +1,6 @@
 [project]
 name = "PlaywrightCapture"
-version = "1.43.6"
+version = "1.43.7"
 description = "A simple library to capture websites using playwright"
 authors = [
     {name="Raphaël Vinot", email= "raphael.vinot@circl.lu"}
@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.16"
 dynamic = [ "classifiers" ]
 
 dependencies = [
-    "playwright (>=1.65.1)",
+    "playwright (>=1.65.2)",
     "beautifulsoup4[charset-normalizer,lxml] (>=4.15.0)",
     "w3lib (>=2.6.0)",
     "playwright-stealth (>=2.0.3)",
@@ -23,10 +23,10 @@ dependencies = [
     "python-socks (>=3.0.0,<4.0.0)",
     "rfc3161-client (>=1.0.4,<2.0.0)",
     "orjson (>=3.12,<4.0.0)",
-    "pure-magic-rs (>=0.6.0)",
+    "pure-magic-rs (>=0.6.2)",
     "lookyloo-models (>=0.5.0)",
     "charset-normalizer (>=3.4.6,<4.0.0)",
-    "pyfaup-rs (>=0.4.30)"
+    "pyfaup-rs (>=0.4.31)"
 ]
 
 [project.urls]
@@ -52,8 +52,8 @@ recaptcha = [
 types-beautifulsoup4 = "^4.12.0.20250516"
 pytest = "^9.2.0"
 mypy = "^2.4.1"
-types-dateparser = "^1.4.3.20260907"
-types-pytz = "^2026.6.0.20261031"
+types-dateparser = "^1.4.3.20261122"
+types-pytz = "^2026.6.0.20261122"
 
 
 [build-system]
