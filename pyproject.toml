@@ -25,7 +25,7 @@ dependencies = [
     "orjson (>=3.12,<4.0.0)",
     "pure-magic-rs (>=0.6.2)",
     "lookyloo-models (>=0.5.0)",
-    "charset-normalizer (>=3.4.6,<4.0.0)",
+    "charset-normalizer (>=3.5.3,<4.0.0)",
     "pyfaup-rs (>=0.4.31)"
 ]
 
